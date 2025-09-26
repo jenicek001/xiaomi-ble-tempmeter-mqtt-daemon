@@ -1,229 +1,171 @@
-# Xiaomi Mijia Bluetooth Daemon# Xiaomi Mijia Bluetooth Daemon
+# Xiaomi Mijia Bluetooth Low Energy Temperature & Humidity Sensor to MQTT Daemon
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://www.docker.com/)
 
+A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes sensor data to MQTT brokers with Home Assistant discovery support.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+**No Home Assistant Required** • **Docker Ready** • **Raspberry Pi Optimized**
 
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+## Features
 
-[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://www.docker.com/)[![Docker](https://img.shields.io/badge/docker-supported-blue.svg)](https://www.docker.com/)
-
-
-
-A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes sensor data to MQTT brokers with Home Assistant discovery support.A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes sensor data to MQTT brokers with Home Assistant discovery support.
-
-
-
-**No Home Assistant Required** • **Docker Ready** • **Raspberry Pi Optimized****No Home Assistant Required** • **Docker Ready** • **Raspberry Pi Optimized**
-
-
-
-## AttributionThis project is derived from the excellent [mitemp_bt2](https://github.com/leonxi/mitemp_bt2) Home Assistant integration by [@leonxi](https://github.com/leonxi), adapted for standalone operation.
-
-
-
-This project is derived from the excellent [mitemp_bt2](https://github.com/leonxi/mitemp_bt2) Home Assistant integration by [@leonxi](https://github.com/leonxi), adapted for standalone operation. See [ATTRIBUTION.md](./ATTRIBUTION.md) for detailed attribution information.| LYWSD03MMC | LYWSDCGQ/01ZM |
-
-| ---------------------- | ---------------------- |
-
-## Features| ![LYWSD03MMC](/pictures/LYWSD03MMC.jpg) | ![LYWSDCGQ/01ZM](/pictures/LYWSDCGQ01ZM.jpg) |
-
-
-
-* **Standalone Operation**: No Home Assistant dependency required## Requirements
-
+* **Standalone Operation**: No Home Assistant dependency required
 * **MQTT Publishing**: Real-time sensor data to any MQTT broker  
-
-* **Home Assistant Integration**: Automatic MQTT Discovery support* Supported & tested on HassOS 4.13 (HassOS Release-4 build 13 (Stable))
-
-* **Docker Ready**: Easy deployment with Docker Compose  * Warning: HassOS 4.14 has BLE bugs need fix, BLE devices can not be connected.
-
-* **Raspberry Pi Optimized**: Efficient operation on ARM hardware  * Other versions need to be tested
-
-* **Multi-Device Support**: Handle multiple thermometers simultaneously* Hardware need bluetooth adapter and be actived, tested on Raspberry PI 3 Model B
-
-* **Auto-Discovery**: Automatically find and configure new devices  * Other hardwares need to be tested
-
+* **Home Assistant Integration**: Automatic MQTT Discovery support
+* **Docker Ready**: Easy deployment with Docker Compose  
+* **Raspberry Pi Optimized**: Efficient operation on ARM hardware  
+* **Multi-Device Support**: Handle multiple thermometers simultaneously
+* **Auto-Discovery**: Automatically find and configure new devices  
 * **Robust Error Handling**: Connection retry logic and graceful recovery
+* **Comprehensive Monitoring**: Health checks and optional Prometheus metrics
 
-* **Comprehensive Monitoring**: Health checks and optional Prometheus metrics## Supported devices
+## Supported Devices
 
-
-
-## Supported Devices| Name                   | Model                  | Model no. |
-
-| ---------------------- | ---------------------- | --------- |
-
-| Device | Model | Features || Xiaomi Mijia BLE Temperature Hygrometer  |  | LYWSDCGQ/01ZM |
-
-|--------|-------|----------|| Xiaomi Mijia BLE Temperature Hygrometer 2  |  | LYWSD03MMC  |
-
+| Device | Model | Features |
+|--------|-------|----------|
 | ![LYWSD03MMC](pictures/LYWSD03MMC.jpg) | **LYWSD03MMC**<br>Mijia BLE Temperature Hygrometer 2 | Temperature, Humidity, Battery |
+| ![LYWSDCGQ/01ZM](pictures/LYWSDCGQ01ZM.jpg) | **LYWSDCGQ/01ZM**<br>Original Mijia BLE Temperature Hygrometer | Temperature, Humidity, Battery |
 
-| ![LYWSDCGQ/01ZM](pictures/LYWSDCGQ01ZM.jpg) | **LYWSDCGQ/01ZM**<br>Original Mijia BLE Temperature Hygrometer | Temperature, Humidity, Battery |## Features
+## 🚨 Important: Sensor Setup Instructions
 
+⚠️ **CRITICAL SETUP STEP**: Before the daemon can connect to your Xiaomi sensors, you must activate them:
 
+### For LYWSD03MMC and LYWSDCGQ/01ZM Sensors:
 
-## Requirements### Mijia BLE Temperature Hygrometer (LYWSDCGQ/01ZM)
+1. **Locate the bluetooth button** on the bottom side of the sensor
+2. **Press and hold the button for 3-5 seconds** until the display blinks or changes
+3. The sensor will now actively broadcast and accept connections for several minutes
+4. **Start the daemon within this activation window**
+5. **Repeat this process if the sensor becomes unresponsive**
 
+**Important Notes:**
+- Sensors automatically enter power-saving mode after ~15-30 minutes of inactivity
+- If you experience connection timeouts, try reactivating the sensor
+- Some sensors may require multiple button presses to activate properly
+- The display should blink or show a connection indicator when activated
 
+## Requirements
 
-* **Operating System**: Linux (Raspberry Pi OS recommended)- Attributes
-
-* **Python**: 3.9 or higher    - `temperature`
-
-* **Bluetooth**: Bluetooth 4.0+ adapter  - `humidity`
-
-* **MQTT Broker**: Any MQTT 3.1.1 compatible broker  - `battery`
-
+* **Operating System**: Linux (Raspberry Pi OS recommended)
+* **Python**: 3.9 or higher
+* **Bluetooth**: Bluetooth 4.0+ adapter  
+* **MQTT Broker**: Any MQTT 3.1.1 compatible broker (Mosquitto recommended)
 * **Docker** (optional): For containerized deployment
-
-### Mijia BLE Temperature Hygrometer 2 (LYWSD03MMC)
 
 ### Tested Platforms
 
-- Attributes
+* ✅ Raspberry Pi 3 Model B+
+* ✅ Raspberry Pi 4 Model B
+* ✅ Raspberry Pi Zero 2 W
+* ✅ Ubuntu 20.04+ on x86_64
+* ✅ Debian 11+ on ARM64
 
-* Raspberry Pi 3 Model B+  - `temperature`
+## Quick Start
 
-* Raspberry Pi 4 Model B    - `humidity`
-
-* Raspberry Pi Zero 2 W  - `battery`
-
-* Ubuntu 20.04+ on x86_64
-
-* Debian 11+ on ARM64## Install
-
-
-
-## Quick StartYou can install this custom component by adding this repository ([https://github.com/leonxi/mitemp_bt2](https://github.com/leonxi/mitemp_bt2/)) to [HACS](https://hacs.xyz/) in the settings menu of HACS first. You will find the custom component in the integration menu afterwards, look for 'Xiaomi Mijia BLE Temperature Hygrometer 2 Integration'. Alternatively, you can install it manually by copying the custom_component folder to your Home Assistant configuration folder.
-
-
-
-### Docker Compose (Recommended)
-
-## Setup (_Optional_)
+### Method 1: Docker Compose (Recommended)
 
 1. **Clone the repository**:
-
-   ```bashFrom v0.2.0-dev releases, it will auto discovery without any configuration.
-
-   git clone https://github.com/jenicek001/xiaomi-ble-tempmeter-mqtt-daemon.git
-
-   cd xiaomi-ble-tempmeter-mqtt-daemon```yaml
-
-   ```# configuration.yaml
-
-
-
-2. **Configure the daemon**:sensor:
-
-   ```bash  - platform: mitemp_bt2
-
-   cp config/config.yaml.example config/config.yaml    mac: 'A4:C1:38:AA:AA:AA'
-
-   # Edit config.yaml with your MQTT broker settings    mode: 'LYWSD03MMC'
-
-   ```    name: book room
-
-    period: 60
-
-3. **Start the daemon**:  - platform: mitemp_bt2
-
-   ```bash    mac: 'A4:C1:38:FF:FF:FF'
-
-   docker-compose up -d    mode: 'LYWSD03MMC'
-
-   ```    name: living room
-
-    period: 60
-
-4. **Monitor logs**:```
-
    ```bash
+   git clone https://github.com/jenicek001/xiaomi-ble-tempmeter-mqtt-daemon.git
+   cd xiaomi-ble-tempmeter-mqtt-daemon
+   ```
 
-   docker-compose logs -f mijia-daemonConfiguration variables:
+2. **Configure the daemon**:
+   ```bash
+   cp config/config.yaml.example config/config.yaml
+   # Edit config.yaml with your MQTT broker settings
+   ```
 
-   ```- **mac** (*Required*): The MAC of your device.
+3. **Start the daemon**:
+   ```bash
+   docker-compose up -d
+   ```
 
-- **mode** (*Optional*): The mode of your device. Default LYWSD03MMC
+4. **Monitor logs**:
+   ```bash
+   docker-compose logs -f mijia-daemon
+   ```
 
-### Manual Installation- **name** (*Optional*): The name of your device.
-
-- **period** (*Optional*): The scan period of your device. Default 300 seconds.
+### Method 2: Manual Installation
 
 1. **Install dependencies**:
-
-   ```bash## Panel Sample
-
+   ```bash
    sudo apt update
+   sudo apt install python3 python3-pip bluetooth bluez
+   ```
 
-   sudo apt install python3 python3-pip bluetooth bluez  ![LYWSD03MMC_PANEL_SHOW](/pictures/sample_panel_1.png)
+2. **Install Python packages**:
+   ```bash
+   # Using uvx (recommended)
+   uvx --from bleak --with pydantic --with paho-mqtt --with PyYAML --with python-dotenv python -m src.main
 
-   pip3 install -r requirements.txt
+   # Or install globally
+   pip3 install bleak pydantic paho-mqtt PyYAML python-dotenv
+   ```
 
-   ```## Todo
+3. **Configure and run**:
+   ```bash
+   cp config/config.yaml.example config/config.yaml
+   # Edit configuration with your settings
+   python3 -m src.main --config config/config.yaml
+   ```
 
+## Configuration
 
+The daemon supports multiple configuration methods:
 
-2. **Configure and run**:- Integration Options
-
-   ```bash  - (_**Supported**_) Add auto discovery option, to control enable or disable discovery
-
-   cp config/config.yaml.example config/config.yaml  - (_**Supported**_) Add period option, to control period of fetching devices' data, default period is 15 minutes. Avoid frequent access to Bluetooth devices, resulting in high power consumption of them.
-
-   # Edit configuration- Known issues
-
-   python3 src/main.py --config config/config.yaml  - (_**Fixed**_) When installation, discoverred devices can not be displayed, and set their own areas.
-
-   ```  - (_**Fixed**_) In devices list, area or name can not be modified.
-
-
-
-## Configuration[releases-shield]: https://img.shields.io/github/release/leonxi/mitemp_bt2.svg
-
-[releases]: https://github.com/leonxi/mitemp_bt2/releases
-
-The daemon supports multiple configuration methods with the following precedence:
-
-1. **Environment Variables** (highest priority)
-2. **Configuration File** (YAML)  
-3. **Default Values** (lowest priority)
-
-### Basic MQTT Configuration
+### Basic Configuration (config.yaml)
 
 ```yaml
-mqtt:
-  broker: "192.168.1.100"          # Your MQTT broker IP
-  port: 1883                       # MQTT port
-  username: "homeassistant"        # MQTT username
-  password: "your-password"        # MQTT password
-  base_topic: "mijiableht"         # Base topic for sensor data
+# Bluetooth configuration
+bluetooth:
+  adapter: 0                    # Bluetooth adapter number
+  connection_timeout: 15        # Connection timeout in seconds
+  retry_attempts: 3            # Number of retry attempts
 
+# MQTT broker configuration  
+mqtt:
+  broker_host: "localhost"      # MQTT broker hostname/IP
+  broker_port: 1883            # MQTT broker port
+  username: "homeassistant"    # MQTT username
+  password: "your-password"    # MQTT password
+  client_id: "mijia-daemon"    # MQTT client ID
+  discovery_prefix: "homeassistant"  # Home Assistant discovery prefix
+
+# Device configuration
 devices:
-  auto_discovery: true             # Automatically find devices
-  poll_interval: 300               # Poll every 5 minutes
+  auto_discovery: true          # Enable automatic device discovery
+  poll_interval: 300           # Poll every 5 minutes
+  
+  # Static device configuration (replace with your actual MACs)
+  static_devices:
+    - mac: "4C:65:A8:DC:84:01"  # Your sensor MAC address
+      name: "Living Room"       # Friendly name
+      mode: "LYWSDCGQ"         # Device mode
+      enabled: true            # Enable/disable device
 ```
 
 ### Environment Variables
 
+Create a `.env` file or set environment variables:
+
 ```bash
-# .env file
-MQTT_BROKER=192.168.1.100
-MQTT_USERNAME=homeassistant
-MQTT_PASSWORD=secretpassword
-DEVICES_AUTO_DISCOVERY=true
-LOG_LEVEL=INFO
+MIJIA_MQTT_BROKER_HOST=192.168.1.100
+MIJIA_MQTT_USERNAME=homeassistant
+MIJIA_MQTT_PASSWORD=secretpassword
+MIJIA_DEVICES_AUTO_DISCOVERY=true
+MIJIA_LOG_LEVEL=INFO
 ```
 
-See [config/config.yaml.example](config/config.yaml.example) for complete configuration options.
+## MQTT Topics and Data Format
 
-## MQTT Topics
+### Data Topics
 
 The daemon publishes sensor data as JSON to a single topic per device:
 
 ```
-mijiableht/{device_id}/state      # JSON with temperature, humidity, battery, last_seen
+mijiableht/{device_id}/state      # JSON with all sensor data
 ```
 
 **Example JSON message:**
@@ -246,12 +188,107 @@ homeassistant/sensor/mijiableht_{device_id}_humidity/config
 homeassistant/sensor/mijiableht_{device_id}_battery/config
 ```
 
+## Troubleshooting
+
+### Common Issues
+
+**❌ Connection Failed / Device Not Responding**
+1. **First, activate the sensor** (press and hold button on bottom)
+2. Check if device is discovered: `sudo hcitool lescan`
+3. Restart Bluetooth service: `sudo systemctl restart bluetooth`
+
+**❌ Bluetooth Permission Denied**
+```bash
+sudo usermod -a -G bluetooth $USER
+# Logout and login again
+```
+
+**❌ MQTT Connection Failed**
+```bash
+# Test MQTT connection
+mosquitto_pub -h <broker> -u <username> -P <password> -t test -m "hello"
+```
+
+**❌ Discovery Not Working**
+```bash
+# Check Bluetooth adapter
+hciconfig
+sudo hciconfig hci0 up
+
+# Scan manually
+sudo bluetoothctl
+scan on
+```
+
+### Debug Mode
+
+Run with debug logging for detailed troubleshooting:
+
+```bash
+python3 -m src.main --log-level DEBUG
+```
+
+### Testing Individual Sensors
+
+Use the test script to verify sensor connectivity:
+
+```bash
+# Test GATT connection
+uvx --from bleak --with pydantic python test_gatt.py
+```
+
+## Docker Deployment
+
+### Basic docker-compose.yml
+
+```yaml
+version: '3.8'
+services:
+  mijia-daemon:
+    build: .
+    container_name: mijia-daemon
+    restart: unless-stopped
+    privileged: true          # Required for Bluetooth access
+    network_mode: host        # Required for BLE scanning
+    
+    environment:
+      - MIJIA_MQTT_BROKER_HOST=192.168.1.100
+      - MIJIA_MQTT_USERNAME=homeassistant
+      - MIJIA_MQTT_PASSWORD=your-password
+      - MIJIA_LOG_LEVEL=INFO
+      
+    volumes:
+      - ./config:/app/config:ro
+      - ./logs:/app/logs
+```
+
+## Monitoring
+
+### Health Check
+
+The daemon provides a health check endpoint:
+
+```bash
+curl http://localhost:8082/health
+```
+
+### Logs
+
+Monitor daemon logs:
+
+```bash
+# Docker
+docker-compose logs -f mijia-daemon
+
+# Manual installation  
+journalctl -f -u mijia-daemon
+```
+
 ## Development
 
 ### Setup Development Environment
 
 ```bash
-# Clone and setup
 git clone https://github.com/jenicek001/xiaomi-ble-tempmeter-mqtt-daemon.git
 cd xiaomi-ble-tempmeter-mqtt-daemon
 
@@ -261,141 +298,17 @@ make install-dev
 # Run tests
 make test
 
-# Format code
-make format
-
 # Run daemon in development mode
 make run-dev
 ```
 
-### Project Structure
+## Attribution
 
-```
-src/
-├── main.py              # Main daemon entry point
-├── bluetooth_manager.py # BLE communication
-├── device_manager.py    # Device management  
-├── mqtt_publisher.py    # MQTT client
-├── config_manager.py    # Configuration handling
-└── utils/               # Utility functions
-
-config/                  # Configuration files
-docker/                  # Docker configuration  
-tests/                   # Test suite
-docs/                    # Documentation
-```
-
-## Docker Deployment
-
-### Basic Deployment
-
-```yaml
-# docker-compose.yml
-version: '3.8'
-services:
-  mijia-daemon:
-    image: mijia-bluetooth-daemon:latest
-    container_name: mijia-daemon
-    restart: unless-stopped
-    privileged: true          # Required for Bluetooth access
-    network_mode: host        # Required for BLE scanning
-    
-    environment:
-      - MQTT_BROKER=192.168.1.100
-      - MQTT_USERNAME=homeassistant
-      - LOG_LEVEL=INFO
-      
-    volumes:
-      - ./config:/app/config:ro
-      - ./logs:/app/logs
-```
-
-### Production Deployment
-
-For production deployments with secrets management:
-
-```yaml
-services:
-  mijia-daemon:
-    secrets:
-      - mqtt_password
-    environment:
-      - MQTT_PASSWORD_FILE=/run/secrets/mqtt_password
-```
-
-## Monitoring and Health Checks
-
-### Health Check Endpoint
-
-The daemon provides a health check endpoint on port 8082 by default:
-
-```bash
-curl http://localhost:8082/health
-```
-
-### Prometheus Metrics (Optional)
-
-Enable Prometheus metrics export:
-
-```yaml
-monitoring:
-  enabled: true
-  port: 8080
-```
-
-Metrics available at `http://localhost:8080/metrics`
-
-## Troubleshooting
-
-### Common Issues
-
-**Bluetooth Permission Denied**
-```bash
-sudo usermod -a -G bluetooth $USER
-sudo systemctl restart bluetooth
-```
-
-**Device Not Found**
-```bash
-# Scan for devices manually
-sudo hcitool lescan
-
-# Check Bluetooth status
-sudo systemctl status bluetooth
-```
-
-**MQTT Connection Failed**
-```bash
-# Test MQTT connection
-mosquitto_pub -h <broker> -t test -m "hello"
-```
-
-### Debug Mode
-
-Run with debug logging:
-
-```bash
-python3 src/main.py --log-level DEBUG
-```
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
-
-### Development Workflow
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests
-5. Run the test suite
-6. Submit a pull request
+This project is derived from the excellent [mitemp_bt2](https://github.com/leonxi/mitemp_bt2) Home Assistant integration by [@leonxi](https://github.com/leonxi), adapted for standalone operation. See [ATTRIBUTION.md](./ATTRIBUTION.md) for detailed attribution information.
 
 ## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-The original work is also MIT licensed - see [LICENSE-ORIGINAL](LICENSE-ORIGINAL) for the original license.
 
 ## Support
 
@@ -406,5 +319,5 @@ The original work is also MIT licensed - see [LICENSE-ORIGINAL](LICENSE-ORIGINAL
 ## Acknowledgments
 
 * [@leonxi](https://github.com/leonxi) for the original Home Assistant integration
-* The Home Assistant community for BLE protocol documentation
+* The Home Assistant community for BLE protocol documentation  
 * Contributors to the bleak and paho-mqtt Python libraries

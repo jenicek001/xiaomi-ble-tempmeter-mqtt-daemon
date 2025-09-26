@@ -46,7 +46,9 @@ class MijiaTemperatureDaemon:
             config = self.config_manager.get_config()
 
             # Initialize Bluetooth manager
-            self.bluetooth_manager = BluetoothManager(config.bluetooth.model_dump())
+            bluetooth_config = config.bluetooth.model_dump()
+            bluetooth_config['static_devices'] = config.devices.static_devices
+            self.bluetooth_manager = BluetoothManager(bluetooth_config)
             logger.info("Bluetooth manager initialized")
 
             # Initialize MQTT publisher
@@ -82,13 +84,20 @@ class MijiaTemperatureDaemon:
         logger.info("Stopping Xiaomi Mijia Bluetooth Daemon...")
         self.running = False
         
-        # Cleanup components in reverse order
-        if self.mqtt_publisher:
-            await self.mqtt_publisher.stop()
-        if self.bluetooth_manager:
-            await self.bluetooth_manager.cleanup()
-            
-        logger.info("Daemon stopped")
+        try:
+            # Cleanup components in reverse order
+            if self.mqtt_publisher:
+                logger.debug("Stopping MQTT publisher...")
+                await self.mqtt_publisher.stop()
+                
+            if self.bluetooth_manager:
+                logger.debug("Cleaning up Bluetooth manager...")
+                await self.bluetooth_manager.cleanup()
+                
+            logger.info("Daemon stopped successfully")
+        except Exception as e:
+            logger.error(f"Error during shutdown: {e}")
+            logger.info("Daemon stopped with errors")
         
     async def _main_loop(self) -> None:
         """Main daemon execution loop."""
@@ -108,31 +117,50 @@ class MijiaTemperatureDaemon:
             try:
                 # Test reading data from discovered devices
                 for device in discovered_devices:
+                    if not self.running:  # Check running state between devices
+                        break
+                        
                     mac = device["mac"]
                     mode = device["mode"]
                     logger.info(f"Reading data from {device['name']} ({mac})")
 
-                    sensor_data = await self.bluetooth_manager.read_device_data(mac, mode)
-                    if sensor_data:
-                        logger.info(f"Device {mac}: {sensor_data.to_dict()}")
+                    try:
+                        sensor_data = await self.bluetooth_manager.read_device_data(mac, mode)
+                        if sensor_data:
+                            logger.info(f"Device {mac}: {sensor_data.to_dict()}")
 
-                        # Publish to MQTT (Step 3 - completed)
-                        device_id = mac.replace(":", "").replace("-", "")  # Clean MAC for device ID
-                        success = await self.mqtt_publisher.publish_sensor_data(device_id, sensor_data)
-                        if success:
-                            logger.debug(f"Published data for {mac} to MQTT")
+                            # Publish to MQTT (Step 3 - completed)
+                            device_id = mac.replace(":", "").replace("-", "")  # Clean MAC for device ID
+                            success = await self.mqtt_publisher.publish_sensor_data(device_id, sensor_data)
+                            if success:
+                                logger.debug(f"Published data for {mac} to MQTT")
+                            else:
+                                logger.warning(f"Failed to publish data for {mac} to MQTT")
                         else:
-                            logger.warning(f"Failed to publish data for {mac} to MQTT")
-                    else:
-                        logger.warning(f"Failed to read data from {mac}")
+                            logger.warning(f"Failed to read data from {mac}")
+                    except Exception as e:
+                        logger.error(f"Error reading from device {mac}: {e}")
 
-                # Sleep for polling interval
+                if not self.running:
+                    break
+
+                # Sleep for polling interval with periodic checks
                 logger.debug(f"Sleeping for {poll_interval} seconds...")
-                await asyncio.sleep(poll_interval)
+                for _ in range(poll_interval):
+                    if not self.running:
+                        break
+                    await asyncio.sleep(1)  # Sleep 1 second at a time for responsiveness
 
+            except asyncio.CancelledError:
+                logger.info("Main loop cancelled")
+                break
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                await asyncio.sleep(30)  # Brief pause before retry
+                if self.running:  # Only sleep if we're still supposed to be running
+                    for _ in range(30):  # Brief pause before retry
+                        if not self.running:
+                            break
+                        await asyncio.sleep(1)
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -147,14 +175,14 @@ def setup_logging(log_level: str = "INFO") -> None:
     )
 
 
-def signal_handler(daemon: MijiaTemperatureDaemon) -> None:
-    """Handle shutdown signals."""
-    def handler(signum, frame):
-        logger.info(f"Received signal {signum}, shutting down...")
-        asyncio.create_task(daemon.stop())
+def setup_signal_handlers(daemon: MijiaTemperatureDaemon) -> None:
+    """Setup signal handlers for graceful shutdown."""
+    def signal_handler(signum, frame):
+        logger.info(f"Received signal {signum}, initiating shutdown...")
+        daemon.running = False
     
-    signal.signal(signal.SIGTERM, handler)
-    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    signal.signal(signal.SIGINT, signal_handler)
 
 
 async def main() -> None:
@@ -179,16 +207,20 @@ async def main() -> None:
     # Setup logging
     setup_logging(args.log_level)
     
-    # Create and start daemon
+    # Create daemon
     daemon = MijiaTemperatureDaemon(args.config)
     
     # Setup signal handlers
-    signal_handler(daemon)
+    setup_signal_handlers(daemon)
     
     try:
         await daemon.start()
     except KeyboardInterrupt:
         logger.info("Received keyboard interrupt")
+        daemon.running = False
+    except Exception as e:
+        logger.error(f"Daemon error: {e}")
+        daemon.running = False
     finally:
         await daemon.stop()
 

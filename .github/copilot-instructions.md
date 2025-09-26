@@ -8,6 +8,27 @@ Standalone Python daemon for Xiaomi Mijia BLE thermometers. Reads sensor data vi
 - **paho-mqtt**: MQTT client
 - **pydantic**: Configuration validation
 - **asyncio**: Async patterns throughout
+- **python-dotenv**: Load environment variables from .env
+
+## Running Ephemerally With uvx
+Prefer using `uvx` for ad‑hoc / development runs to avoid polluting the global Python environment. Two common patterns:
+
+```
+uvx --from bleak --with paho-mqtt --with pydantic --with pyyaml --with python-dotenv python -m src.main --log-level DEBUG
+```
+
+Or, to honor the pinned versions in `requirements.txt` while still being ephemeral:
+
+```
+uvx --script requirements.txt python -m src.main
+```
+
+Guidelines:
+- Add any new persistent dependency to `requirements.txt`; keep dev/test extras in `requirements-dev.txt`.
+- Use `uvx` for local testing / CI one‑shot executions. For deployment (container, service unit) install from `requirements.txt` inside the isolated environment (virtualenv/container layer), not system‑wide.
+- Do NOT `pip install` globally on the host; always rely on ephemeral or virtual environments.
+
+When editing automation (Makefile, CI), prefer a target that shells out through `uvx` so contributors only need the `uv` binary plus build tools.
 
 ## Core Patterns
 
@@ -41,7 +62,10 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
   "temperature": 23.5,
   "humidity": 45.2, 
   "battery": 78,
-  "last_seen": "2025-09-26T10:30:45Z"
+  "voltage": 1.2,
+  "last_seen": "2025-09-26T10:30:45Z",
+  "rssi": -70,
+  "signal": "strong"
 }
 ```
 
