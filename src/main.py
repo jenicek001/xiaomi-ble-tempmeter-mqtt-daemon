@@ -170,9 +170,16 @@ def setup_logging(log_level: str = "INFO") -> None:
         format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
         handlers=[
             logging.StreamHandler(sys.stdout),
-            # TODO: Add file handler based on configuration
         ]
     )
+    # Tone down very chatty bleak/bluez debug logs unless user explicitly asked for DEBUG globally
+    if log_level.upper() != "DEBUG":
+        for noisy in [
+            "bleak.backends.bluezdbus.manager",
+            "bleak.backends.bluezdbus.scanner",
+            "bleak.backends.bluezdbus.client",
+        ]:
+            logging.getLogger(noisy).setLevel(logging.WARNING)
 
 
 def setup_signal_handlers(daemon: MijiaTemperatureDaemon) -> None:
