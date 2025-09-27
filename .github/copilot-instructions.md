@@ -63,9 +63,8 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
   "humidity": 45.2, 
   "battery": 78,
   "voltage": 1.2,
-  "last_seen": "2025-09-27T09:28:01.921805+02:00",
-  "rssi": -70,
-  "signal": "strong"
+  "last_seen": "2025-09-27T12:39:51.993688+02:00",
+  "rssi": -89
 }
 ```
 
@@ -74,6 +73,13 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
 - **Handle 0x0046**: Device config (LYWSD03MMC only) 
 - **Data**: 5 bytes → temp(2), humidity(1), battery(2)
 - **Battery calc**: `min(int(round((voltage - 2.1), 2) * 100), 100)`
+
+## RSSI Implementation
+- **Discovery**: RSSI captured during BLE advertisement scanning using callback-based approach
+- **Caching**: Last known RSSI values stored in `_rssi_cache` dictionary per MAC address  
+- **Updates**: RSSI refreshed during device discovery (currently only at daemon startup)
+- **Integration**: Cached RSSI included in SensorData objects and MQTT messages
+- **Fallback**: Multiple methods attempted for RSSI retrieval from BLE backends
 
 ## Code Style
 - Use type hints
