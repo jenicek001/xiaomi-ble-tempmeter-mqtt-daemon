@@ -80,7 +80,7 @@ async def test_bluetooth_manager():
                 print(f"     🌡️  Temperature: {sensor_data.temperature}°C")
                 print(f"     💧 Humidity: {sensor_data.humidity}%")
                 print(f"     🔋 Battery: {sensor_data.battery}%")
-                print(f"     ⏰ Timestamp: {sensor_data.timestamp}")
+                print(f"     ⏰ Last seen: {sensor_data.last_seen}")
                 return True
             else:
                 print("  ❌ Failed to read sensor data")

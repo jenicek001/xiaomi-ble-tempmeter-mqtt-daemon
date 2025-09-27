@@ -85,7 +85,7 @@ async def test_manual_sensor_reading():
                                                 humidity=humidity,
                                                 battery=battery,
                                                 voltage=voltage,
-                                                timestamp=datetime.now()
+                                                last_seen=datetime.now()
                                             )
                                             
                                     except Exception as e:
@@ -120,7 +120,7 @@ async def test_manual_sensor_reading():
                                                     humidity=humidity,
                                                     battery=battery,
                                                     voltage=voltage,
-                                                    timestamp=datetime.now()
+                                                    last_seen=datetime.now()
                                                 )
                                         else:
                                             print(f"   ⚠️  No notifications received")
@@ -166,7 +166,7 @@ async def test_full_data_flow():
             humidity=45,
             battery=78,
             voltage=2.9,
-            timestamp=datetime.now()
+            last_seen=datetime.now()
         )
     
     print(f"\n📊 Sensor Data:")

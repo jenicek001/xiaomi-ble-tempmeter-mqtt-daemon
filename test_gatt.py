@@ -44,7 +44,7 @@ async def test_gatt_connection():
                 print(f"  Humidity: {sensor_data.humidity}%") 
                 print(f"  Battery: {sensor_data.battery}%")
                 print(f"  Voltage: {sensor_data.voltage:.3f}V")
-                print(f"  Timestamp: {sensor_data.timestamp}")
+                print(f"  Last seen: {sensor_data.last_seen}")
                 
                 # Validate data quality
                 temp_valid = -50 < sensor_data.temperature < 80

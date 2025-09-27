@@ -20,7 +20,7 @@ Based on the original Home Assistan                    # Start notifications and
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass
 
@@ -36,7 +36,7 @@ class SensorData:
     humidity: float
     battery: int
     voltage: float
-    timestamp: datetime
+    last_seen: datetime  # Should be timezone-aware
     rssi: Optional[int] = None
     
     def to_dict(self):
@@ -46,7 +46,7 @@ class SensorData:
             "humidity": self.humidity,
             "battery": self.battery,
             "voltage": self.voltage,
-            "timestamp": self.timestamp.isoformat(),
+            "last_seen": self.last_seen.isoformat(),  # includes TZ info
             "rssi": self.rssi
         }
 
@@ -141,7 +141,7 @@ class BluetoothManager:
                                         humidity=humidity,
                                         battery=battery,
                                         voltage=voltage,
-                                        timestamp=datetime.now()
+                                        last_seen=datetime.now(tz=timezone.utc).astimezone()
                                     )
                                     
                                     logger.debug(f"Parsed ASCII: T={temperature}°C, H={humidity}%, B={battery}%, V={voltage:.3f}V")
@@ -168,7 +168,7 @@ class BluetoothManager:
                                     humidity=humidity,
                                     battery=battery,
                                     voltage=voltage,
-                                    timestamp=datetime.now()
+                                    last_seen=datetime.now(tz=timezone.utc).astimezone()
                                 )
                                 
                                 logger.debug(f"Parsed binary: T={temperature}°C, H={humidity}%, B={battery}%, V={voltage:.3f}V")

@@ -51,7 +51,7 @@ async def test_full_sensor_data():
                 print(f"  Humidity: {sensor_data.humidity}%")
                 print(f"  Battery: {sensor_data.battery}%")
                 print(f"  RSSI: {sensor_data.rssi} dBm")
-                print(f"  Timestamp: {sensor_data.timestamp}")
+                print(f"  Last seen: {sensor_data.last_seen}")
                 
                 # Check data quality
                 has_temp = sensor_data.temperature is not None and sensor_data.temperature > -50
