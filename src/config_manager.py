@@ -38,6 +38,7 @@ class BluetoothConfigModel(BaseModel):
     scan_interval: int = 300
     connection_timeout: int = 10
     retry_attempts: int = 3
+    rediscovery_interval: int = 3600
 
 class DevicesConfigModel(BaseModel):
     auto_discovery: bool = True
@@ -108,6 +109,7 @@ class ConfigManager:
             ("bluetooth", "scan_interval"): "MIJIA_BLUETOOTH_SCAN_INTERVAL",
             ("bluetooth", "connection_timeout"): "MIJIA_BLUETOOTH_CONNECTION_TIMEOUT",
             ("bluetooth", "retry_attempts"): "MIJIA_BLUETOOTH_RETRY_ATTEMPTS",
+            ("bluetooth", "rediscovery_interval"): "MIJIA_BLUETOOTH_REDISCOVERY_INTERVAL",
             ("devices", "auto_discovery"): "MIJIA_DEVICES_AUTO_DISCOVERY",
             ("devices", "poll_interval"): "MIJIA_DEVICES_POLL_INTERVAL",
             ("logging", "level"): "MIJIA_LOG_LEVEL",

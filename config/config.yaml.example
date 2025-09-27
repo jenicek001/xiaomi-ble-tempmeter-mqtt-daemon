@@ -7,6 +7,7 @@ bluetooth:
   scan_interval: ${BLUETOOTH_SCAN_INTERVAL:-300} # Device scan interval in seconds
   connection_timeout: ${BLUETOOTH_CONNECTION_TIMEOUT:-10} # Connection timeout in seconds
   retry_attempts: ${BLUETOOTH_RETRY_ATTEMPTS:-3} # Number of retry attempts
+  rediscovery_interval: ${BLUETOOTH_REDISCOVERY_INTERVAL:-3600} # BLE rediscovery interval in seconds (1 hour)
 
 # MQTT broker configuration  
 mqtt:

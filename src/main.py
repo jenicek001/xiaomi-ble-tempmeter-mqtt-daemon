@@ -108,7 +108,11 @@ class MijiaTemperatureDaemon:
             logger.warning("No Xiaomi devices found during initial scan")
 
         poll_interval = 300
-        rediscovery_interval = 3600  # 1 hour in seconds
+        rediscovery_interval = 3600  # Default 1 hour in seconds
+        if self.config_manager and self.config_manager._config:
+            poll_interval = self.config_manager._config.devices.poll_interval
+            rediscovery_interval = self.config_manager._config.bluetooth.rediscovery_interval
+
         last_rediscovery = asyncio.get_event_loop().time()
 
         while self.running:
@@ -133,7 +137,9 @@ class MijiaTemperatureDaemon:
                         sensor_data = await self.bluetooth_manager.read_device_data(mac, mode)
                         if sensor_data:
                             logger.info(f"Device {mac}: {sensor_data.to_dict()}")
-                            device_id = mac.replace(":", "").replace("-", "")
+
+                            # Publish to MQTT (Step 3 - completed)
+                            device_id = mac.replace(":", "").replace("-", "")  # Clean MAC for device ID
                             success = await self.mqtt_publisher.publish_sensor_data(device_id, sensor_data)
                             if success:
                                 logger.debug(f"Published data for {mac} to MQTT")
@@ -152,15 +158,15 @@ class MijiaTemperatureDaemon:
                 for _ in range(poll_interval):
                     if not self.running:
                         break
-                    await asyncio.sleep(1)
+                    await asyncio.sleep(1)  # Sleep 1 second at a time for responsiveness
 
             except asyncio.CancelledError:
                 logger.info("Main loop cancelled")
                 break
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                if self.running:
-                    for _ in range(30):
+                if self.running:  # Only sleep if we're still supposed to be running
+                    for _ in range(30):  # Brief pause before retry
                         if not self.running:
                             break
                         await asyncio.sleep(1)
