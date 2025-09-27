@@ -100,37 +100,40 @@ class MijiaTemperatureDaemon:
             logger.info("Daemon stopped with errors")
         
     async def _main_loop(self) -> None:
-        """Main daemon execution loop."""
-        # Perform initial device discovery
+        """Main daemon execution loop with periodic rediscovery."""
+        # Initial device discovery
         logger.info("Performing initial device discovery...")
         discovered_devices = await self.bluetooth_manager.discover_devices()
-
         if not discovered_devices:
             logger.warning("No Xiaomi devices found during initial scan")
 
-        # For now, demonstrate reading from discovered devices
         poll_interval = 300
-        if self.config_manager and self.config_manager._config:
-            poll_interval = self.config_manager._config.devices.poll_interval
+        rediscovery_interval = 3600  # 1 hour in seconds
+        last_rediscovery = asyncio.get_event_loop().time()
 
         while self.running:
             try:
-                # Test reading data from discovered devices
+                # Periodic rediscovery
+                now = asyncio.get_event_loop().time()
+                if (now - last_rediscovery) >= rediscovery_interval:
+                    logger.info("Performing periodic BLE rediscovery...")
+                    discovered_devices = await self.bluetooth_manager.discover_devices()
+                    last_rediscovery = now
+                    if not discovered_devices:
+                        logger.warning("No Xiaomi devices found during rediscovery")
+
+                # Read data from discovered devices
                 for device in discovered_devices:
-                    if not self.running:  # Check running state between devices
+                    if not self.running:
                         break
-                        
                     mac = device["mac"]
                     mode = device["mode"]
                     logger.info(f"Reading data from {device['name']} ({mac})")
-
                     try:
                         sensor_data = await self.bluetooth_manager.read_device_data(mac, mode)
                         if sensor_data:
                             logger.info(f"Device {mac}: {sensor_data.to_dict()}")
-
-                            # Publish to MQTT (Step 3 - completed)
-                            device_id = mac.replace(":", "").replace("-", "")  # Clean MAC for device ID
+                            device_id = mac.replace(":", "").replace("-", "")
                             success = await self.mqtt_publisher.publish_sensor_data(device_id, sensor_data)
                             if success:
                                 logger.debug(f"Published data for {mac} to MQTT")
@@ -149,15 +152,15 @@ class MijiaTemperatureDaemon:
                 for _ in range(poll_interval):
                     if not self.running:
                         break
-                    await asyncio.sleep(1)  # Sleep 1 second at a time for responsiveness
+                    await asyncio.sleep(1)
 
             except asyncio.CancelledError:
                 logger.info("Main loop cancelled")
                 break
             except Exception as e:
                 logger.error(f"Error in main loop: {e}")
-                if self.running:  # Only sleep if we're still supposed to be running
-                    for _ in range(30):  # Brief pause before retry
+                if self.running:
+                    for _ in range(30):
                         if not self.running:
                             break
                         await asyncio.sleep(1)

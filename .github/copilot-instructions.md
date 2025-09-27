@@ -63,8 +63,9 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
   "humidity": 45.2, 
   "battery": 78,
   "voltage": 1.2,
-  "last_seen": "2025-09-27T12:39:51.993688+02:00",
-  "rssi": -89
+  "last_seen": "2025-09-27T09:28:01.921805+02:00",
+  "rssi": -70,
+  "signal": "strong"
 }
 ```
 
