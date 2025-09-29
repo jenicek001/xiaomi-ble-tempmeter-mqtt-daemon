@@ -62,6 +62,39 @@ class BluetoothManager:
         self._rssi_cache = {}  # Cache for last known RSSI values per MAC
         logger.debug(f"Initializing BluetoothManager with config: {config}")
         
+    def _calculate_aaa_battery_percentage(self, voltage: float) -> int:
+        """
+        Calculate battery percentage for AAA alkaline battery based on voltage.
+        
+        AAA alkaline battery voltage ranges:
+        - Fresh/Full: 1.65V (100%)
+        - Good: 1.5V (90%) 
+        - Usable: 1.3V (50%)
+        - Low: 1.2V (20%)
+        - Nearly dead: 1.0V (5%)
+        - Dead: 0.9V (0%)
+        """
+        if voltage >= 1.65:
+            return 100
+        elif voltage >= 1.5:
+            # Linear interpolation between 1.5V (90%) and 1.65V (100%)
+            return int(90 + (voltage - 1.5) / (1.65 - 1.5) * 10)
+        elif voltage >= 1.3:
+            # Linear interpolation between 1.3V (50%) and 1.5V (90%)
+            return int(50 + (voltage - 1.3) / (1.5 - 1.3) * 40)
+        elif voltage >= 1.2:
+            # Linear interpolation between 1.2V (20%) and 1.3V (50%)
+            return int(20 + (voltage - 1.2) / (1.3 - 1.2) * 30)
+        elif voltage >= 1.0:
+            # Linear interpolation between 1.0V (5%) and 1.2V (20%)
+            return int(5 + (voltage - 1.0) / (1.2 - 1.0) * 15)
+        elif voltage >= 0.9:
+            # Linear interpolation between 0.9V (0%) and 1.0V (5%)
+            return int((voltage - 0.9) / (1.0 - 0.9) * 5)
+        else:
+            # Below 0.9V is completely dead
+            return 0
+        
     async def read_sensor_data(self, mac_address: str, scan_timeout: int = 10) -> Optional[SensorData]:
         """
         Read sensor data from Xiaomi device using GATT connection (correct protocol).
@@ -153,9 +186,9 @@ class BluetoothManager:
                                     temperature = round(float(temp_match.group(1)), 1)
                                     humidity = round(float(humid_match.group(1)), 1)
                                     
-                                    # ASCII format doesn't include voltage/battery, use defaults
-                                    voltage = 3.0  # Assume good battery
-                                    battery = 80   # Assume 80% battery
+                                    # ASCII format doesn't include voltage/battery, use reasonable AAA estimates
+                                    voltage = 1.4  # Assume good AAA alkaline battery (between 1.3-1.5V)
+                                    battery = self._calculate_aaa_battery_percentage(voltage)  # ~70%
                                     
                                     # Get cached RSSI
                                     cached_rssi = self._rssi_cache.get(mac_address)
@@ -187,8 +220,9 @@ class BluetoothManager:
                                 voltage_raw = int.from_bytes(data[3:5], byteorder="little")
                                 voltage = voltage_raw / 1000.0  # Scale: /1000
                                 
-                                # Calculate battery percentage (2.1V = 0%, 3.1V+ = 100%)
-                                battery = max(0, min(100, int(round((voltage - 2.1) * 100))))
+                                # Calculate battery percentage for AAA alkaline battery
+                                # Fresh: 1.65V (100%), Good: 1.5V (90%), Low: 1.2V (20%), Dead: 0.9V (0%)
+                                battery = self._calculate_aaa_battery_percentage(voltage)
                                 
                                 # Get cached RSSI
                                 cached_rssi = self._rssi_cache.get(mac_address)

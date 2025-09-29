@@ -73,7 +73,9 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
 - **Handle 0x0038**: Enable notifications (temp/humidity/battery)
 - **Handle 0x0046**: Device config (LYWSD03MMC only) 
 - **Data**: 5 bytes → temp(2), humidity(1), battery(2)
-- **Battery calc**: `min(int(round((voltage - 2.1), 2) * 100), 100)`
+- **Battery calc**: AAA alkaline battery percentage via `_calculate_aaa_battery_percentage()` method
+  - Fresh: 1.65V (100%), Good: 1.5V (90%), Usable: 1.3V (50%), Low: 1.2V (20%), Dead: 0.9V (0%)
+  - Uses piecewise linear interpolation between voltage ranges for realistic percentage mapping
 
 ## RSSI Implementation
 - **Discovery**: RSSI captured during BLE advertisement scanning using callback-based approach
