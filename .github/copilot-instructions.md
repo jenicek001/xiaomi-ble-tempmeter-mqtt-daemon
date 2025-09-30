@@ -11,16 +11,16 @@ Standalone Python daemon for Xiaomi Mijia BLE thermometers. Reads sensor data vi
 - **python-dotenv**: Load environment variables from .env
 
 ## Running Ephemerally With uvx
-Prefer using `uvx` for ad‑hoc / development runs to avoid polluting the global Python environment. Two common patterns:
+Prefer using `uvx` for ad‑hoc / development runs to avoid polluting the global Python environment.
 
-```
-uvx --from bleak --with paho-mqtt --with pydantic --with pyyaml --with python-dotenv python -m src.main --log-level DEBUG
-```
+To run the daemon with dependencies from the current project:
 
-Or, to honor the pinned versions in `requirements.txt` while still being ephemeral:
+```bash
+# Run with DEBUG logging
+uvx --from . python -m src.main --log-level DEBUG
 
-```
-uvx --script requirements.txt python -m src.main
+# Run with INFO logging (recommended for normal operation)
+uvx --from . python -m src.main --log-level INFO
 ```
 
 Guidelines:
@@ -62,24 +62,23 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
   "temperature": 23.5,
   "humidity": 45.2, 
   "battery": 78,
-  "voltage": 1.2,
-  "last_seen": "2025-09-27T09:28:01.921805+02:00",
+  "last_seen": "2025-09-27T09:28:01.921805+02:00", # TZ-aware local time
   "rssi": -70,
-  "signal": "strong"
+  "signal": "strong", # Signal strength (RSSI) interpretation
+  "friendly_name": "Living Room", # (Optional) User-friendly name for the device if optionally defined in configuration
+  "message_type": "periodic" # or "threshold-based" - periodic updates are sent at regular intervals regardless if values has changed
 }
 ```
 
 ## Device Protocol
 - **Handle 0x0038**: Enable notifications (temp/humidity/battery)
-- **Handle 0x0046**: Device config (LYWSD03MMC only) 
-- **Data**: 5 bytes → temp(2), humidity(1), battery(2)
-- **Battery calc**: AAA alkaline battery percentage via `_calculate_aaa_battery_percentage()` method
-  - Fresh: 1.65V (100%), Good: 1.5V (90%), Usable: 1.3V (50%), Low: 1.2V (20%), Dead: 0.9V (0%)
-  - Uses piecewise linear interpolation between voltage ranges for realistic percentage mapping
+- **Handle 0x0046**: Device config (LYWSD03MMC only)
+- **Data**: MiBeacon advertisements → temp(2), humidity(2), battery(1)
+- **Battery**: Direct percentage value from MiBeacon packet (no voltage estimation)
 
 ## RSSI Implementation
 - **Discovery**: RSSI captured during BLE advertisement scanning using callback-based approach
-- **Caching**: Last known RSSI values stored in `_rssi_cache` dictionary per MAC address  
+- **Caching**: Last known RSSI values stored in `_rssi_cache` dictionary per MAC address
 - **Updates**: RSSI refreshed during device discovery (currently only at daemon startup)
 - **Integration**: Cached RSSI included in SensorData objects and MQTT messages
 - **Fallback**: Multiple methods attempted for RSSI retrieval from BLE backends
@@ -89,3 +88,14 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
 - Implement proper error handling with exponential backoff
 - Clean up resources in finally blocks
 - Structure logging with context
+
+## Coding Guidelines
+- Follow PEP 8 for Python code style
+- Use descriptive variable and function names
+- Write unit tests for new features and bug fixes
+- Keep functions small and focused on a single task
+
+## Coding Agent
+- Always use **context7** MCP server to get up-to-date documentation for any used libraries / packages / dependencies
+- Use **brave-search** MCP server to search the Internet and forums for relevant information and experience
+- Use **fetch** MCP server to access specific URLs

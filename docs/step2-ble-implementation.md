@@ -8,7 +8,7 @@ The Bluetooth Manager has been successfully implemented with the following featu
 
 - **Device Discovery**: Scan for Xiaomi Mijia thermometers via BLE
 - **Data Reading**: Connect to devices and read sensor data
-- **Data Parsing**: Parse the 5-byte notification format
+- **Data Parsing**: Parse MiBeacon advertisement data format
 - **Error Handling**: Retry logic and timeout management
 - **Resource Management**: Proper cleanup and connection handling
 
@@ -24,16 +24,16 @@ The Bluetooth Manager has been successfully implemented with the following featu
 #### `SensorData` Class
 
 - Structured data container for sensor readings
-- Temperature, humidity, battery, and timestamp
+- Temperature, humidity, battery percentage, and timestamp
 - JSON conversion for MQTT publishing
-- Battery percentage calculation from voltage
+- Battery percentage from MiBeacon protocol
 
 #### Features Ported from Original
 
 - BLE characteristic handles (0x0038 for notifications, 0x0046 for config)
 - Device-specific configuration for LYWSD03MMC
-- Battery calculation algorithm: `(voltage - 2.1) * 100`
-- 5-byte notification data parsing
+- Direct battery percentage from MiBeacon advertisements
+- MiBeacon protocol parsing for temperature, humidity, and battery
 
 ## 🧪 Testing
 

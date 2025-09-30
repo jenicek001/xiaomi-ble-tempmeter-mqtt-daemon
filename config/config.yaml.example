@@ -1,47 +1,43 @@
-# Example configuration for Xiaomi Mijia Bluetooth Daemon
+# Hybrid Configuration for Xiaomi Mijia Bluetooth Daemon
 # Copy this file to config.yaml and modify as needed
 
-# Bluetooth configuration
+# Bluetooth configuration (continuous scanning)
 bluetooth:
   adapter: ${BLUETOOTH_ADAPTER:-0}              # Bluetooth adapter number
-  scan_interval: ${BLUETOOTH_SCAN_INTERVAL:-300} # Device scan interval in seconds
   connection_timeout: ${BLUETOOTH_CONNECTION_TIMEOUT:-10} # Connection timeout in seconds
   retry_attempts: ${BLUETOOTH_RETRY_ATTEMPTS:-3} # Number of retry attempts
-  rediscovery_interval: ${BLUETOOTH_REDISCOVERY_INTERVAL:-3600} # BLE rediscovery interval in seconds (1 hour)
 
 # MQTT broker configuration  
 mqtt:
-  broker: ${MQTT_BROKER:-"localhost"}           # MQTT broker hostname/IP
-  port: ${MQTT_PORT:-1883}                     # MQTT broker port
+  broker_host: ${MQTT_BROKER:-"localhost"}      # MQTT broker hostname/IP
+  broker_port: ${MQTT_PORT:-1883}              # MQTT broker port
   username: ${MQTT_USERNAME:-""}               # MQTT username (optional)
   password: ${MQTT_PASSWORD:-""}               # MQTT password (optional)
   client_id: ${MQTT_CLIENT_ID:-"mijia-daemon"} # MQTT client ID
   
   # Topic configuration
-  base_topic: ${MQTT_BASE_TOPIC:-"mijiableht"}  # Base topic for sensor data
   discovery_prefix: ${MQTT_DISCOVERY_PREFIX:-"homeassistant"} # HA discovery prefix
   
   # Message settings
   retain: ${MQTT_RETAIN:-true}                 # Retain messages
-  qos: ${MQTT_QOS:-1}                         # Quality of Service level
+  qos: ${MQTT_QOS:-0}                         # Quality of Service level
+  publish_interval: ${MQTT_PUBLISH_INTERVAL:-300} # Periodic publish interval in seconds
 
-# Device configuration
+# Device configuration (auto-discovery enabled)
 devices:
   auto_discovery: ${DEVICES_AUTO_DISCOVERY:-true} # Enable automatic device discovery
-  poll_interval: ${DEVICES_POLL_INTERVAL:-300}    # Default polling interval in seconds
   
-  # Static device configuration (optional)
+  # Static device configuration (optional friendly names only)
   static_devices:
-    - mac: "A4:C1:38:AA:AA:AA"                # Device MAC address
-      name: "Living Room"                     # Friendly name
-      mode: "LYWSD03MMC"                      # Device mode
-      poll_interval: 180                      # Custom polling interval
-      enabled: true                           # Enable/disable device
-    - mac: "A4:C1:38:BB:BB:BB"
-      name: "Bedroom"
-      mode: "LYWSD03MMC"
-      poll_interval: 300
-      enabled: true
+    - mac: "4C:65:A8:DC:84:01"                # Device MAC address
+      friendly_name: "Living Room"           # Friendly name (optional)
+    - mac: "4C:65:A8:DB:99:44" 
+      friendly_name: "Bedroom"               # Friendly name (optional)
+
+# Threshold configuration for immediate publishing
+thresholds:
+  temperature: ${TEMPERATURE_THRESHOLD:-0.2}      # °C threshold for immediate MQTT publish
+  humidity: ${HUMIDITY_THRESHOLD:-1.0}            # % RH threshold for immediate MQTT publish
 
 # Logging configuration
 logging:

@@ -32,17 +32,19 @@ class MQTTConfigModel(BaseModel):
     qos: int = 0
     retain: bool = True
     discovery_prefix: str = "homeassistant"
+    publish_interval: int = 300  # Fixed interval publishing in seconds
 
 class BluetoothConfigModel(BaseModel):
     adapter: int = 0
-    scan_interval: int = 300
     connection_timeout: int = 10
     retry_attempts: int = 3
-    rediscovery_interval: int = 3600
+
+class ThresholdsConfigModel(BaseModel):
+    temperature: float = 0.2  # °C threshold for immediate publishing
+    humidity: float = 1.0     # % RH threshold for immediate publishing
 
 class DevicesConfigModel(BaseModel):
     auto_discovery: bool = True
-    poll_interval: int = 300
     static_devices: list = Field(default_factory=list)
 
 class LoggingConfigModel(BaseModel):
@@ -54,6 +56,7 @@ class DaemonConfigModel(BaseModel):
     mqtt: MQTTConfigModel
     bluetooth: BluetoothConfigModel
     devices: DevicesConfigModel
+    thresholds: ThresholdsConfigModel
     logging: LoggingConfigModel
 
 class ConfigManager:
@@ -105,13 +108,13 @@ class ConfigManager:
             ("mqtt", "qos"): "MIJIA_MQTT_QOS",
             ("mqtt", "retain"): "MIJIA_MQTT_RETAIN",
             ("mqtt", "discovery_prefix"): "MIJIA_MQTT_DISCOVERY_PREFIX",
+            ("mqtt", "publish_interval"): "MIJIA_MQTT_PUBLISH_INTERVAL",
             ("bluetooth", "adapter"): "MIJIA_BLUETOOTH_ADAPTER",
-            ("bluetooth", "scan_interval"): "MIJIA_BLUETOOTH_SCAN_INTERVAL",
             ("bluetooth", "connection_timeout"): "MIJIA_BLUETOOTH_CONNECTION_TIMEOUT",
             ("bluetooth", "retry_attempts"): "MIJIA_BLUETOOTH_RETRY_ATTEMPTS",
-            ("bluetooth", "rediscovery_interval"): "MIJIA_BLUETOOTH_REDISCOVERY_INTERVAL",
             ("devices", "auto_discovery"): "MIJIA_DEVICES_AUTO_DISCOVERY",
-            ("devices", "poll_interval"): "MIJIA_DEVICES_POLL_INTERVAL",
+            ("thresholds", "temperature"): "MIJIA_TEMPERATURE_THRESHOLD",
+            ("thresholds", "humidity"): "MIJIA_HUMIDITY_THRESHOLD",
             ("logging", "level"): "MIJIA_LOG_LEVEL",
             ("logging", "format"): "MIJIA_LOG_FORMAT",
             ("logging", "file"): "MIJIA_LOG_FILE",

@@ -279,6 +279,94 @@ class MQTTPublisher:
         # Remove from discovered devices
         self._discovered_devices.discard(device_id)
         
+    async def setup_device_discovery(self, device_id: str) -> None:
+        """Set up Home Assistant discovery for a device (public wrapper).
+        
+        Args:
+            device_id: Unique device identifier
+        """
+        await self._setup_discovery(device_id)
+        
+    async def publish_sensor_data_with_name(self, device_id: str, sensor_data: SensorData, 
+                                           friendly_name: Optional[str] = None, 
+                                           reason: str = "periodic") -> bool:
+        """
+        Publish sensor data with optional friendly name and publish reason.
+        
+        Args:
+            device_id: Unique device identifier (MAC without colons)
+            sensor_data: Sensor data to publish
+            friendly_name: Optional friendly name for the device
+            reason: Reason for publishing ("immediate", "periodic", "discovery")
+            
+        Returns:
+            True if published successfully
+        """
+        if not self._client or not self._is_connected:
+            logger.warning(f"Cannot publish data for {device_id} - MQTT not connected")
+            return False
+            
+        try:
+            # Setup Home Assistant discovery first
+            await self.setup_device_discovery(device_id)
+            
+            # Prepare sensor data with friendly name if available
+            data = sensor_data.to_dict()
+            if friendly_name:
+                data['friendly_name'] = friendly_name
+            data['publish_reason'] = reason
+            
+            # Publish to device state topic
+            state_topic = MQTT_TOPICS["state"].format(device_id=device_id)
+            result = self._client.publish(
+                topic=state_topic,
+                payload=json.dumps(data, ensure_ascii=False),
+                qos=self.config.qos,
+                retain=self.config.retain
+            )
+            
+            if result.rc == mqtt.MQTT_ERR_SUCCESS:
+                logger.info(f"Published {reason} data for {device_id}" +
+                           (f" ({friendly_name})" if friendly_name else "") +
+                           f": T={sensor_data.temperature}°C, H={sensor_data.humidity}%, B={sensor_data.battery}%")
+                return True
+            else:
+                logger.error(f"Failed to publish data for {device_id}: {result.rc}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error publishing sensor data for {device_id}: {e}")
+            return False
+    
+    async def publish_multiple_devices(self, devices_data: list) -> int:
+        """
+        Publish data for multiple devices in batch.
+        
+        Args:
+            devices_data: List of tuples (device_id, sensor_data, friendly_name, reason)
+            
+        Returns:
+            Number of devices published successfully
+        """
+        if not self._client or not self._is_connected:
+            logger.warning("Cannot publish batch data - MQTT not connected")
+            return 0
+            
+        success_count = 0
+        
+        for device_id, sensor_data, friendly_name, reason in devices_data:
+            try:
+                success = await self.publish_sensor_data_with_name(device_id, sensor_data, friendly_name, reason)
+                if success:
+                    success_count += 1
+            except Exception as e:
+                logger.error(f"Error in batch publish for {device_id}: {e}")
+                
+        if success_count > 0:
+            logger.info(f"Batch published data for {success_count}/{len(devices_data)} devices")
+            
+        return success_count
+        
     def get_stats(self) -> Dict[str, Any]:
         """Get publisher statistics.
         
