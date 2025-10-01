@@ -226,8 +226,16 @@ class SensorCache:
         static_devices = config.get('static_devices', [])
         
         for device in static_devices:
-            mac = device.get('mac', '').upper()
-            name = device.get('friendly_name') or device.get('name')
+            # Handle both dict and StaticDeviceModel objects
+            if hasattr(device, 'mac'):
+                # It's a Pydantic model
+                mac = device.mac.upper()
+                name = device.friendly_name
+            else:
+                # It's a dict
+                mac = device.get('mac', '').upper()
+                name = device.get('friendly_name') or device.get('name')
+            
             if mac and name:
                 self.friendly_names[mac] = name
                 logger.debug(f"Loaded friendly name '{name}' for device {mac}")

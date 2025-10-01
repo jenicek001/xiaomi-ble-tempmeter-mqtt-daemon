@@ -51,7 +51,12 @@ class MijiaTemperatureDaemon:
 
             # Initialize Bluetooth manager for discovery
             bluetooth_config = config.bluetooth.model_dump()
-            bluetooth_config['static_devices'] = config.devices.static_devices
+            # Convert StaticDeviceModel instances to dicts for backward compatibility
+            static_devices_dicts = [
+                device.model_dump() if hasattr(device, 'model_dump') else device
+                for device in config.devices.static_devices
+            ]
+            bluetooth_config['static_devices'] = static_devices_dicts
             self.bluetooth_manager = BluetoothManager(bluetooth_config)
             logger.info("Bluetooth manager initialized")
 
@@ -191,14 +196,25 @@ class MijiaTemperatureDaemon:
             
             if should_publish_immediate or should_publish_periodic:
                 if device and device.current_data:
-                    # Publish complete sensor data to MQTT
+                    # Determine message type
+                    message_type = "threshold-based" if should_publish_immediate else "periodic"
+                    
+                    # Publish complete sensor data to MQTT with friendly name if available
                     logger.info(f"Publishing sensor data for {mac_address} "
-                              f"({'immediate' if should_publish_immediate else 'periodic'})")
+                              f"({'immediate' if should_publish_immediate else 'periodic'})" +
+                              (f" ({device.friendly_name})" if device.friendly_name else ""))
                     
                     if self.mqtt_publisher:
                         # Convert MAC address to device_id format (remove colons)
                         device_id = mac_address.replace(':', '').upper()
-                        await self.mqtt_publisher.publish_sensor_data(device_id, device.current_data)
+                        
+                        # Publish with friendly name if configured
+                        await self.mqtt_publisher.publish_sensor_data_with_name(
+                            device_id, 
+                            device.current_data, 
+                            friendly_name=device.friendly_name,
+                            reason=message_type
+                        )
                         
                         # Mark as published in cache
                         self.sensor_cache.mark_device_published(mac_address)

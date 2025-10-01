@@ -13,7 +13,7 @@ Loads and validates configuration from:
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Optional, Any
+from typing import Dict, Optional, Any, List
 
 import yaml
 from pydantic import BaseModel, Field, ValidationError
@@ -43,9 +43,13 @@ class ThresholdsConfigModel(BaseModel):
     temperature: float = 0.2  # °C threshold for immediate publishing
     humidity: float = 1.0     # % RH threshold for immediate publishing
 
+class StaticDeviceModel(BaseModel):
+    mac: str  # Device MAC address
+    friendly_name: Optional[str] = None  # Optional friendly name for the device
+
 class DevicesConfigModel(BaseModel):
     auto_discovery: bool = True
-    static_devices: list = Field(default_factory=list)
+    static_devices: List[StaticDeviceModel] = Field(default_factory=list)
 
 class LoggingConfigModel(BaseModel):
     level: str = "INFO"

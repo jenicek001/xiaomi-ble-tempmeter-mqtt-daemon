@@ -27,12 +27,16 @@ mqtt:
 devices:
   auto_discovery: ${DEVICES_AUTO_DISCOVERY:-true} # Enable automatic device discovery
   
-  # Static device configuration (optional friendly names only)
+  # Static device configuration with optional friendly names
+  # Friendly names will be included in MQTT messages as "friendly_name" field
+  # This allows for human-readable device identification in Home Assistant and other consumers
   static_devices:
-    - mac: "4C:65:A8:DC:84:01"                # Device MAC address
-      friendly_name: "Living Room"           # Friendly name (optional)
+    - mac: "4C:65:A8:DC:84:01"                # Device MAC address (required)
+      friendly_name: "Living Room"           # Optional friendly name for the device
     - mac: "4C:65:A8:DB:99:44" 
-      friendly_name: "Bedroom"               # Friendly name (optional)
+      friendly_name: "Bedroom"               # Optional friendly name for the device
+    # Example without friendly name (only MAC is required):
+    # - mac: "4C:65:A8:DD:77:22"
 
 # Threshold configuration for immediate publishing
 thresholds:

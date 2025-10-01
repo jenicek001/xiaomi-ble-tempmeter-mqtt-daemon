@@ -297,7 +297,7 @@ class MQTTPublisher:
             device_id: Unique device identifier (MAC without colons)
             sensor_data: Sensor data to publish
             friendly_name: Optional friendly name for the device
-            reason: Reason for publishing ("immediate", "periodic", "discovery")
+            reason: Reason for publishing ("threshold-based", "periodic")
             
         Returns:
             True if published successfully
@@ -310,11 +310,8 @@ class MQTTPublisher:
             # Setup Home Assistant discovery first
             await self.setup_device_discovery(device_id)
             
-            # Prepare sensor data with friendly name if available
-            data = sensor_data.to_dict()
-            if friendly_name:
-                data['friendly_name'] = friendly_name
-            data['publish_reason'] = reason
+            # Prepare sensor data with friendly name and message type
+            data = sensor_data.to_dict(friendly_name=friendly_name, message_type=reason)
             
             # Publish to device state topic
             state_topic = MQTT_TOPICS["state"].format(device_id=device_id)

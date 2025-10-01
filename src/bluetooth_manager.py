@@ -44,16 +44,25 @@ class SensorData:
     last_seen: datetime  # Should be timezone-aware
     rssi: Optional[int] = None
     
-    def to_dict(self):
-        """Convert to dictionary for JSON serialization"""
-        return {
+    def to_dict(self, friendly_name: Optional[str] = None, message_type: str = "periodic"):
+        """Convert to dictionary for JSON serialization
+        
+        Args:
+            friendly_name: Optional user-friendly name for the device
+            message_type: Type of message ("periodic" or "threshold-based")
+        """
+        result = {
             "temperature": self.temperature,
             "humidity": self.humidity,
             "battery": self.battery,
             "last_seen": self.last_seen.isoformat(),  # includes TZ info
             "rssi": self.rssi,
-            "signal": interpret_rssi(self.rssi)
+            "signal": interpret_rssi(self.rssi),
+            "message_type": message_type
         }
+        if friendly_name:
+            result["friendly_name"] = friendly_name
+        return result
 
 
 class BluetoothManager:
