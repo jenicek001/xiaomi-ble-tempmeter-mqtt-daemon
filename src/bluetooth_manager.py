@@ -28,6 +28,11 @@ from dataclasses import dataclass
 from bleak import BleakClient, BleakScanner
 from pydantic import BaseModel, Field
 
+try:
+    from .constants import interpret_rssi
+except ImportError:
+    from constants import interpret_rssi
+
 logger = logging.getLogger(__name__)
 
 @dataclass
@@ -46,7 +51,8 @@ class SensorData:
             "humidity": self.humidity,
             "battery": self.battery,
             "last_seen": self.last_seen.isoformat(),  # includes TZ info
-            "rssi": self.rssi
+            "rssi": self.rssi,
+            "signal": interpret_rssi(self.rssi)
         }
 
 

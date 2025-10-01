@@ -59,3 +59,29 @@ UNITS = {
     "humidity": "%",
     "battery": "%"
 }
+
+# RSSI signal strength interpretation
+def interpret_rssi(rssi: int | None) -> str:
+    """
+    Interpret RSSI value into human-readable signal strength.
+    Optimized for indoor Bluetooth Low Energy applications.
+    
+    Args:
+        rssi: RSSI value in dBm (negative integer)
+        
+    Returns:
+        Human-readable signal strength description
+    """
+    if rssi is None:
+        return "unknown"
+    
+    if rssi >= -50:
+        return "excellent"
+    elif rssi >= -60:
+        return "good"
+    elif rssi >= -70:
+        return "fair"
+    elif rssi >= -80:
+        return "weak"
+    else:
+        return "very weak"

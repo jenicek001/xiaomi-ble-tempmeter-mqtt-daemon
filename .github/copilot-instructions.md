@@ -82,6 +82,13 @@ homeassistant/sensor/mijiableht_{device_id}_battery/config  # Discovery for batt
 - **Updates**: RSSI refreshed during device discovery (currently only at daemon startup)
 - **Integration**: Cached RSSI included in SensorData objects and MQTT messages
 - **Fallback**: Multiple methods attempted for RSSI retrieval from BLE backends
+- **Interpretation**: RSSI values automatically converted to human-readable signal strength:
+  - `excellent`: >= -50 dBm (< 2m, optimal)
+  - `good`: -50 to -60 dBm (2-5m, reliable)
+  - `fair`: -60 to -70 dBm (5-10m, acceptable)
+  - `weak`: -70 to -80 dBm (10-20m, may have issues)
+  - `very weak`: < -80 dBm (> 20m, poor connection)
+  - `unknown`: RSSI not available
 
 ## Code Style
 - Use type hints
