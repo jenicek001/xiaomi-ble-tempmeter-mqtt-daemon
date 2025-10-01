@@ -314,16 +314,29 @@ class SensorCache:
         """
         Get all devices that should be published in the next periodic cycle.
         Only includes devices with complete data.
+        Publishes heartbeat messages even if data hasn't changed.
         
         Returns:
             List of devices ready for periodic publishing
         """
         ready_devices = []
+        current_time = datetime.now(tz=timezone.utc).astimezone()
         
         for device in self.devices.values():
-            if device.is_data_complete() and device.should_publish_periodic(self.publish_interval) and device.has_new_data():
+            if device.is_data_complete() and device.should_publish_periodic(self.publish_interval):
                 # Ensure current_data is up to date
                 device.current_data = device.create_complete_sensor_data()
+                
+                # Check if sensor data is stale (last_seen older than last publish)
+                if device.last_publish_time and device.last_update_time:
+                    if device.last_update_time < device.last_publish_time:
+                        time_diff = (current_time - device.last_update_time).total_seconds()
+                        logger.error(
+                            f"Sensor lost: {device.friendly_name or device.mac_address} "
+                            f"(MAC: {device.mac_address}) - No data received for {time_diff:.0f}s. "
+                            f"Last seen: {device.last_update_time.isoformat()}"
+                        )
+                
                 ready_devices.append(device)
                 
         return ready_devices
