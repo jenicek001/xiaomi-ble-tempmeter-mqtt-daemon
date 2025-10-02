@@ -65,6 +65,11 @@ A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes
 
 ### Method 1: Docker Compose (Recommended)
 
+**Prerequisites:**
+- Existing MQTT broker running (Mosquitto, Home Assistant built-in broker, etc.)
+- MQTT broker accessible from the Raspberry Pi/host
+- Docker and Docker Compose installed
+
 1. **Clone the repository**:
    ```bash
    git clone https://github.com/jenicek001/xiaomi-ble-tempmeter-mqtt-daemon.git
@@ -73,18 +78,23 @@ A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes
 
 2. **Configure the daemon**:
    ```bash
+   # Copy configuration templates
    cp config/config.yaml.example config/config.yaml
-   # Edit config.yaml with your MQTT broker settings
+   cp .env.example .env
+   
+   # Edit with your MQTT broker address and credentials
+   nano .env
+   nano config/config.yaml
    ```
 
 3. **Start the daemon**:
    ```bash
-   docker-compose up -d
+   docker compose up -d
    ```
 
 4. **Monitor logs**:
    ```bash
-   docker-compose logs -f mijia-daemon
+   docker compose logs -f mijia-daemon
    ```
 
 ### Method 2: Manual Installation

@@ -1,0 +1,54 @@
+# Legacy Docker Compose configuration with host network mode
+# NOTE: This file is now redundant - use docker-compose.yml instead
+# The main docker-compose.yml already uses host network mode
+#
+# This file kept for backward compatibility only
+# Consider removing it in favor of the unified docker-compose.yml
+
+services:
+  mijia-daemon:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mijia-bluetooth-daemon:latest
+    container_name: mijia-daemon
+    restart: unless-stopped
+    
+    # Use host network for direct Bluetooth access (Linux only)
+    network_mode: host
+    
+    # Note: privileged is NOT needed with host network mode
+    
+    volumes:
+      # Configuration file
+      - ./config/config.yaml:/config/config.yaml:ro
+      
+      # D-Bus socket for Bluetooth (REQUIRED)
+      - /var/run/dbus:/var/run/dbus:ro
+      
+      # Optional: logs
+      - ./logs:/app/logs
+    
+    # Use .env file instead of hardcoding credentials
+    env_file:
+      - .env
+    
+    environment:
+      # Override specific variables if needed
+      - MIJIA_LOG_LEVEL=${MIJIA_LOG_LEVEL:-INFO}
+      - MIJIA_BLUETOOTH_ADAPTER=${MIJIA_BLUETOOTH_ADAPTER:-0}
+    
+    # Health check
+    healthcheck:
+      test: ["CMD-SHELL", "pgrep -f 'python.*src.main' > /dev/null || exit 1"]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    
+    # Logging
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
