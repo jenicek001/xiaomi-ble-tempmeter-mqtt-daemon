@@ -41,6 +41,8 @@ services:
       # Override specific variables if needed
       - MIJIA_LOG_LEVEL=${MIJIA_LOG_LEVEL:-INFO}
       - MIJIA_BLUETOOTH_ADAPTER=${MIJIA_BLUETOOTH_ADAPTER:-0}
+      # Timezone configuration for correct timestamps in MQTT messages
+      - TZ=${TZ:-Europe/Prague}
     
     # Labels for organization and monitoring
     labels:

@@ -27,24 +27,6 @@ A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes
 | ![LYWSD03MMC](pictures/LYWSD03MMC.jpg) | **LYWSD03MMC**<br>Mijia BLE Temperature Hygrometer 2 | Temperature, Humidity, Battery |
 | ![LYWSDCGQ/01ZM](pictures/LYWSDCGQ01ZM.jpg) | **LYWSDCGQ/01ZM**<br>Original Mijia BLE Temperature Hygrometer | Temperature, Humidity, Battery |
 
-## 🚨 Important: Sensor Setup Instructions
-
-⚠️ **CRITICAL SETUP STEP**: Before the daemon can connect to your Xiaomi sensors, you must activate them:
-
-### For LYWSD03MMC and LYWSDCGQ/01ZM Sensors:
-
-1. **Locate the bluetooth button** on the bottom side of the sensor
-2. **Press and hold the button for 3-5 seconds** until the display blinks or changes
-3. The sensor will now actively broadcast and accept connections for several minutes
-4. **Start the daemon within this activation window**
-5. **Repeat this process if the sensor becomes unresponsive**
-
-**Important Notes:**
-- Sensors automatically enter power-saving mode after ~15-30 minutes of inactivity
-- If you experience connection timeouts, try reactivating the sensor
-- Some sensors may require multiple button presses to activate properly
-- The display should blink or show a connection indicator when activated
-
 ## Requirements
 
 * **Operating System**: Linux (Raspberry Pi OS recommended)
@@ -61,6 +43,54 @@ A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes
 * ✅ Ubuntu 20.04+ on x86_64
 * ✅ Debian 11+ on ARM64
 
+## Installing Docker on Raspberry Pi
+
+If you don't have Docker installed yet, follow these steps to install Docker Engine and Docker Compose on Raspberry Pi OS:
+
+```bash
+# 1. Update system packages
+sudo apt-get update
+
+# 2. Install prerequisites
+sudo apt-get install -y ca-certificates curl
+
+# 3. Add Docker's official GPG key
+sudo install -m 0755 -d /etc/apt/keyrings
+sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o /etc/apt/keyrings/docker.asc
+sudo chmod a+r /etc/apt/keyrings/docker.asc
+
+# 4. Add Docker repository to apt sources
+echo \
+  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/debian \
+  $(. /etc/os-release && echo "$VERSION_CODENAME") stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+# 5. Update apt package index
+sudo apt-get update
+
+# 6. Install Docker Engine and Docker Compose
+sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# 7. Verify installation
+sudo docker --version
+docker compose version
+
+# 8. (Optional) Add your user to docker group to run without sudo
+sudo usermod -aG docker $USER
+# Log out and log back in for this to take effect
+```
+
+**Verify Docker is running:**
+```bash
+sudo systemctl status docker
+```
+
+If Docker is not running, start it with:
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker  # Enable auto-start on boot
+```
+
 ## Quick Start
 
 ### Method 1: Docker Compose (Recommended)
@@ -69,6 +99,7 @@ A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes
 - Existing MQTT broker running (Mosquitto, Home Assistant built-in broker, etc.)
 - MQTT broker accessible from the Raspberry Pi/host
 - Docker and Docker Compose installed
+- **Note**: First run will build the Docker image locally (takes 2-3 minutes on Raspberry Pi)
 
 1. **Clone the repository**:
    ```bash
@@ -87,8 +118,10 @@ A standalone Linux daemon for Xiaomi Mijia Bluetooth thermometers that publishes
    nano config/config.yaml
    ```
 
-3. **Start the daemon**:
+3. **Build and start the daemon**:
    ```bash
+   # First run will automatically build the Docker image
+   # This takes 2-3 minutes on Raspberry Pi, subsequent starts are instant
    docker compose up -d
    ```
 
@@ -249,27 +282,73 @@ uvx --from bleak --with pydantic python test_gatt.py
 
 ## Docker Deployment
 
+### Image Build Process
+
+The Docker image is **built locally** from source on first run. There is no pre-built image to pull from a registry.
+
+**Build Details:**
+- **First run**: `docker compose up` automatically builds the image (2-3 minutes on Raspberry Pi)
+- **Subsequent runs**: Uses cached image (starts in seconds)
+- **Rebuilding**: Use `docker compose build --no-cache` to rebuild from scratch
+- **Architecture**: Multi-stage build optimized for both ARM64 and AMD64
+
 ### Basic docker-compose.yml
 
 ```yaml
-version: '3.8'
 services:
   mijia-daemon:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: mijia-bluetooth-daemon:latest
     container_name: mijia-daemon
     restart: unless-stopped
-    privileged: true          # Required for Bluetooth access
     network_mode: host        # Required for BLE scanning
+    user: root                # Required for Bluetooth access
+    
+    env_file:
+      - .env
     
     environment:
-      - MIJIA_MQTT_BROKER_HOST=192.168.1.100
-      - MIJIA_MQTT_USERNAME=homeassistant
-      - MIJIA_MQTT_PASSWORD=your-password
-      - MIJIA_LOG_LEVEL=INFO
+      - MIJIA_LOG_LEVEL=${MIJIA_LOG_LEVEL:-INFO}
+      - MIJIA_BLUETOOTH_ADAPTER=${MIJIA_BLUETOOTH_ADAPTER:-0}
+      - TZ=${TZ:-Europe/Prague}
       
     volumes:
-      - ./config:/app/config:ro
+      - ./config/config.yaml:/config/config.yaml:ro
+      - /var/run/dbus:/var/run/dbus:ro
       - ./logs:/app/logs
+```
+
+### Manual Build
+
+To build the image manually before running:
+
+```bash
+# Build image
+docker compose build
+
+# Or rebuild without cache
+docker compose build --no-cache
+
+# Then start
+docker compose up -d
+```
+
+### Makefile Commands
+
+The project includes a Makefile for common Docker operations:
+
+```bash
+make docker-build         # Build Docker image
+make docker-run           # Start daemon
+make docker-stop          # Stop daemon
+make docker-restart       # Restart daemon
+make docker-logs          # View logs
+make docker-shell         # Open shell in container
+make docker-health        # Check health status
+make docker-rebuild       # Rebuild from scratch
+make docker-clean         # Remove images and containers
 ```
 
 ## Monitoring

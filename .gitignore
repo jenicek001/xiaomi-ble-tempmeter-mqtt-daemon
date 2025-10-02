@@ -133,3 +133,11 @@ dmypy.json
 
 # Ignore local config file
 config/config.yaml
+
+# Project-specific ignores
+logs/
+*.log
+
+# Keep experiments and tests structure clean
+experiments/**/__pycache__/
+tests/**/__pycache__/
