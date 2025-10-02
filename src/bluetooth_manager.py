@@ -20,12 +20,18 @@ Based on the original Home Assistan                    # Start notifications and
 
 import asyncio
 import logging
+import struct
 from datetime import datetime, timezone
 from typing import Optional
 from dataclasses import dataclass
 
 from bleak import BleakClient, BleakScanner
 from pydantic import BaseModel, Field
+
+try:
+    from .constants import interpret_rssi
+except ImportError:
+    from constants import interpret_rssi
 
 logger = logging.getLogger(__name__)
 
@@ -35,20 +41,28 @@ class SensorData:
     temperature: float
     humidity: float
     battery: int
-    voltage: float
     last_seen: datetime  # Should be timezone-aware
     rssi: Optional[int] = None
     
-    def to_dict(self):
-        """Convert to dictionary for JSON serialization"""
-        return {
+    def to_dict(self, friendly_name: Optional[str] = None, message_type: str = "periodic"):
+        """Convert to dictionary for JSON serialization
+        
+        Args:
+            friendly_name: Optional user-friendly name for the device
+            message_type: Type of message ("periodic" or "threshold-based")
+        """
+        result = {
             "temperature": self.temperature,
             "humidity": self.humidity,
             "battery": self.battery,
-            "voltage": self.voltage,
             "last_seen": self.last_seen.isoformat(),  # includes TZ info
-            "rssi": self.rssi
+            "rssi": self.rssi,
+            "signal": interpret_rssi(self.rssi),
+            "message_type": message_type
         }
+        if friendly_name:
+            result["friendly_name"] = friendly_name
+        return result
 
 
 class BluetoothManager:
@@ -62,218 +76,201 @@ class BluetoothManager:
         self._rssi_cache = {}  # Cache for last known RSSI values per MAC
         logger.debug(f"Initializing BluetoothManager with config: {config}")
         
-    def _calculate_aaa_battery_percentage(self, voltage: float) -> int:
+    def _parse_mibeacon_advertisement(self, service_data: bytes) -> Optional[dict]:
         """
-        Calculate battery percentage for AAA alkaline battery based on voltage.
+        Parse MiBeacon advertisement data from LYWSDCGQ devices.
         
-        AAA alkaline battery voltage ranges:
-        - Fresh/Full: 1.65V (100%)
-        - Good: 1.5V (90%) 
-        - Usable: 1.3V (50%)
-        - Low: 1.2V (20%)
-        - Nearly dead: 1.0V (5%)
-        - Dead: 0.9V (0%)
+        Args:
+            service_data: Raw service data bytes from UUID 0000fe95-0000-1000-8000-00805f9b34fb
+            
+        Returns:
+            Dictionary with parsed sensor data or None if parsing fails
         """
-        if voltage >= 1.65:
-            return 100
-        elif voltage >= 1.5:
-            # Linear interpolation between 1.5V (90%) and 1.65V (100%)
-            return int(90 + (voltage - 1.5) / (1.65 - 1.5) * 10)
-        elif voltage >= 1.3:
-            # Linear interpolation between 1.3V (50%) and 1.5V (90%)
-            return int(50 + (voltage - 1.3) / (1.5 - 1.3) * 40)
-        elif voltage >= 1.2:
-            # Linear interpolation between 1.2V (20%) and 1.3V (50%)
-            return int(20 + (voltage - 1.2) / (1.3 - 1.2) * 30)
-        elif voltage >= 1.0:
-            # Linear interpolation between 1.0V (5%) and 1.2V (20%)
-            return int(5 + (voltage - 1.0) / (1.2 - 1.0) * 15)
-        elif voltage >= 0.9:
-            # Linear interpolation between 0.9V (0%) and 1.0V (5%)
-            return int((voltage - 0.9) / (1.0 - 0.9) * 5)
-        else:
-            # Below 0.9V is completely dead
-            return 0
+        try:
+            if len(service_data) < 14:
+                return None
+                
+            # Validate MiBeacon header
+            if service_data[:4] != b'\x50\x20\xaa\x01':
+                return None
+                
+            logger.debug(f"MiBeacon packet: {service_data.hex()}")
+            
+            result = {}
+            
+            if len(service_data) == 18:
+                # 18-byte format: Temperature + Humidity (type 0x0d) 
+                data_type = service_data[11]
+                payload_len = service_data[13]
+                
+                if data_type == 0x0d and payload_len == 4:
+                    # Parse temp (2 bytes) + humidity (2 bytes), little-endian
+                    temp_raw = struct.unpack('<H', service_data[14:16])[0]
+                    humid_raw = struct.unpack('<H', service_data[16:18])[0]
+                    
+                    result['temperature'] = round(temp_raw / 10.0, 1)
+                    result['humidity'] = round(humid_raw / 10.0, 1)
+                    
+            elif len(service_data) == 16:
+                # 16-byte format: Temperature only (0x04) or Humidity only (0x06)
+                data_type = service_data[11] 
+                payload_len = service_data[13]
+                
+                if data_type == 0x04 and payload_len >= 2:
+                    # Temperature only
+                    temp_raw = struct.unpack('<H', service_data[14:16])[0]
+                    result['temperature'] = round(temp_raw / 10.0, 1)
+                elif data_type == 0x06 and payload_len >= 2:
+                    # Humidity only
+                    humid_raw = struct.unpack('<H', service_data[14:16])[0]
+                    result['humidity'] = round(humid_raw / 10.0, 1)
+                    
+            elif len(service_data) == 15:
+                # 15-byte format: Battery only (type 0x0a)
+                data_type = service_data[11]
+                payload_len = service_data[13]
+                
+                if data_type == 0x0a and payload_len >= 1:
+                    result['battery'] = service_data[14]
+                    
+            return result if result else None
+            
+        except Exception as e:
+            logger.debug(f"Failed to parse MiBeacon data: {e}")
+            return None
+    
+    async def read_sensor_data_advertisement(self, mac_address: str, scan_timeout: int = 30) -> Optional[SensorData]:
+        """
+        Read sensor data from LYWSDCGQ device using advertisement scanning (MiBeacon protocol).
         
-    async def read_sensor_data(self, mac_address: str, scan_timeout: int = 10) -> Optional[SensorData]:
-        """
-        Read sensor data from Xiaomi device using GATT connection (correct protocol).
+        This method is specifically for LYWSDCGQ/01ZM devices that broadcast sensor data
+        in BLE advertisements using the MiBeacon protocol.
         
         Args:
             mac_address: Device MAC address
-            scan_timeout: Timeout for GATT operations
+            scan_timeout: How long to scan for advertisements
+            
+        Returns:
+            SensorData object with temperature, humidity, battery and voltage
+        """
+        logger.info(f"Reading sensor data via advertisements from {mac_address}")
+        
+        # Data collection state
+        collected_data = {}
+        last_rssi = None
+        last_seen = None
+        
+        def advertisement_callback(device, advertisement_data):
+            nonlocal collected_data, last_rssi, last_seen
+            
+            # Filter for our target device
+            if device.address.upper() != mac_address.upper():
+                return
+                
+            # Update RSSI and timestamp
+            if hasattr(advertisement_data, 'rssi'):
+                last_rssi = advertisement_data.rssi
+                self._rssi_cache[mac_address] = last_rssi
+            last_seen = datetime.now(tz=timezone.utc).astimezone()
+            
+            # Look for MiBeacon service data
+            service_data_dict = getattr(advertisement_data, 'service_data', {})
+            xiaomi_uuid = "0000fe95-0000-1000-8000-00805f9b34fb"
+            
+            if xiaomi_uuid in service_data_dict:
+                service_data = service_data_dict[xiaomi_uuid]
+                parsed = self._parse_mibeacon_advertisement(service_data)
+                
+                if parsed:
+                    collected_data.update(parsed)
+                    logger.debug(f"Advertisement update: {parsed}")
+        
+        try:
+            # Start scanning with callback
+            scanner = BleakScanner(detection_callback=advertisement_callback)
+            await scanner.start()
+            
+            logger.debug(f"Scanning for advertisements from {mac_address} for {scan_timeout}s...")
+            await asyncio.sleep(scan_timeout)
+            
+            await scanner.stop()
+            
+            # Check if we have complete data (temperature, humidity, battery)
+            if ('temperature' in collected_data and 
+                'humidity' in collected_data and 
+                'battery' in collected_data):
+                
+                sensor_data = SensorData(
+                    temperature=collected_data['temperature'],
+                    humidity=collected_data['humidity'],
+                    battery=collected_data['battery'],
+                    last_seen=last_seen,  # Only use real timestamp from advertisement
+                    rssi=last_rssi
+                )
+                
+                logger.info(f"Successfully read complete advertisement data from {mac_address}")
+                logger.info(f"Result: T={sensor_data.temperature}°C, H={sensor_data.humidity}%, "
+                          f"B={sensor_data.battery}%, RSSI={sensor_data.rssi}")
+                return sensor_data
+            else:
+                logger.warning(f"Incomplete data from advertisements (need temp+humidity+battery): {collected_data}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"Advertisement scanning failed for {mac_address}: {e}")
+            return None
+    
+    async def _detect_device_type(self, mac_address: str) -> str:
+        """
+        Detect device type by scanning for device name in advertisements.
+        
+        Returns:
+            Device name like "MJ_HT_V1" (LYWSDCGQ), "LYWSD03MMC", etc.
+        """
+        detected_name = None
+        
+        def detection_callback(device, advertisement_data):
+            nonlocal detected_name
+            if device.address.upper() == mac_address.upper() and device.name:
+                detected_name = device.name
+        
+        try:
+            scanner = BleakScanner(detection_callback=detection_callback)
+            await scanner.start()
+            await asyncio.sleep(3.0)  # Quick scan for device name
+            await scanner.stop()
+            
+            return detected_name or "Unknown"
+            
+        except Exception as e:
+            logger.debug(f"Device detection failed: {e}")
+            return "Unknown"
+        
+    async def read_sensor_data(self, mac_address: str, scan_timeout: int = 10) -> Optional[SensorData]:
+        """
+        Read sensor data from Xiaomi device using the appropriate method.
+        
+        For LYWSDCGQ/01ZM (MJ_HT_V1) devices: Uses advertisement-based MiBeacon protocol
+        For LYWSD03MMC devices: Uses GATT connection protocol
+        
+        Args:
+            mac_address: Device MAC address
+            scan_timeout: Timeout for operations
             
         Returns:
             SensorData object with temperature, humidity, battery and voltage
         """
         logger.info(f"Reading sensor data from {mac_address}")
         
-        for attempt in range(self.retry_attempts):
-            try:
-                if attempt > 0:
-                    logger.info(f"Connection attempt {attempt + 1} for device {mac_address}")
-                    await asyncio.sleep(5)  # Wait between retries
-                
-                # Connect to device
-                async with BleakClient(mac_address, timeout=scan_timeout) as client:
-                    logger.debug(f"Connected to {mac_address}")
-                    
-                    # Try to get current RSSI if supported by backend
-                    try:
-                        current_rssi = None
-                        
-                        # Try different methods to get RSSI
-                        if hasattr(client, 'get_rssi'):
-                            current_rssi = await client.get_rssi()
-                        elif hasattr(client, '_device') and hasattr(client._device, 'rssi'):
-                            current_rssi = client._device.rssi
-                        elif hasattr(client, '_backend') and hasattr(client._backend, 'get_rssi'):
-                            current_rssi = await client._backend.get_rssi()
-                        
-                        if current_rssi is not None:
-                            self._rssi_cache[mac_address] = current_rssi
-                            logger.debug(f"Updated RSSI cache: {current_rssi} for {mac_address}")
-                        else:
-                            logger.debug(f"Could not retrieve RSSI from connected client for {mac_address}")
-                    except Exception as e:
-                        logger.debug(f"Could not get RSSI from connected device: {e}")
-                    
-                    # Find the correct characteristic by service and char UUID
-                    # Service: 226c0000-6476-4566-7562-66734470666d
-                    # Char: 226caa55-6476-4566-7562-66734470666d (notify)
-                    notify_char = None
-                    for service in client.services:
-                        if service.uuid.lower() == "226c0000-6476-4566-7562-66734470666d":
-                            for char in service.characteristics:
-                                if char.uuid.lower() == "226caa55-6476-4566-7562-66734470666d":
-                                    notify_char = char
-                                    break
-                            if notify_char:
-                                break
-                    
-                    if not notify_char:
-                        raise Exception("Temperature/Humidity notification characteristic not found")
-                    
-                    logger.debug(f"Found notification characteristic: {notify_char.uuid} handle {notify_char.handle}")
-                    
-                    # Enable notifications for temperature, humidity and battery
-                    await client.write_gatt_char(notify_char, b"\x01\x00")
-                    logger.debug(f"Enabled notifications on characteristic {notify_char.uuid}")
-                    
-                    # Configure device for LYWSDCGQ/01ZM mode (if needed)
-                    # This is optional for LYWSDCGQ/01ZM sensors, skip for now
-                    logger.debug("Skipping optional device configuration")
-                    
-                    # Set up data collection
-                    received_data = None
-                    
-                    def notification_handler(sender, data: bytearray):
-                        nonlocal received_data
-                        logger.debug(f"Received notification: {data.hex()}")
-                        
-                        try:
-                            # Try ASCII format first (some LYWSDCGQ firmware)
-                            try:
-                                text_data = data.decode('ascii').rstrip('\x00')
-                                logger.debug(f"ASCII data: {text_data}")
-                                
-                                # Parse "T=24.9 H=48.3" format
-                                import re
-                                temp_match = re.search(r'T=(-?\d+\.?\d*)', text_data)
-                                humid_match = re.search(r'H=(-?\d+\.?\d*)', text_data)
-                                
-                                if temp_match and humid_match:
-                                    temperature = round(float(temp_match.group(1)), 1)
-                                    humidity = round(float(humid_match.group(1)), 1)
-                                    
-                                    # ASCII format doesn't include voltage/battery, use reasonable AAA estimates
-                                    voltage = 1.4  # Assume good AAA alkaline battery (between 1.3-1.5V)
-                                    battery = self._calculate_aaa_battery_percentage(voltage)  # ~70%
-                                    
-                                    # Get cached RSSI
-                                    cached_rssi = self._rssi_cache.get(mac_address)
-                                    logger.debug(f"RSSI cache lookup for {mac_address}: {cached_rssi}")
-                                    logger.debug(f"Current RSSI cache: {dict(self._rssi_cache)}")
-                                    
-                                    received_data = SensorData(
-                                        temperature=temperature,
-                                        humidity=humidity,
-                                        battery=battery,
-                                        voltage=voltage,
-                                        last_seen=datetime.now(tz=timezone.utc).astimezone(),
-                                        rssi=cached_rssi
-                                    )
-                                    
-                                    logger.debug(f"Parsed ASCII: T={temperature}°C, H={humidity}%, B={battery}%, V={voltage:.3f}V")
-                                    return
-                            except (UnicodeDecodeError, AttributeError, ValueError):
-                                pass  # Not ASCII format, try binary
-                            
-                            # Try binary format (original Xiaomi protocol)
-                            if len(data) >= 5:
-                                # Parse 5-byte notification
-                                temp_raw = int.from_bytes(data[0:2], byteorder="little", signed=True)
-                                temperature = round(temp_raw / 100.0, 1)  # Scale: /100
-                                
-                                humidity = round(int.from_bytes(data[2:3], byteorder="little"), 1)
-                                
-                                voltage_raw = int.from_bytes(data[3:5], byteorder="little")
-                                voltage = voltage_raw / 1000.0  # Scale: /1000
-                                
-                                # Calculate battery percentage for AAA alkaline battery
-                                # Fresh: 1.65V (100%), Good: 1.5V (90%), Low: 1.2V (20%), Dead: 0.9V (0%)
-                                battery = self._calculate_aaa_battery_percentage(voltage)
-                                
-                                # Get cached RSSI
-                                cached_rssi = self._rssi_cache.get(mac_address)
-                                logger.debug(f"RSSI cache lookup for {mac_address}: {cached_rssi}")
-                                logger.debug(f"Current RSSI cache: {dict(self._rssi_cache)}")
-                                
-                                received_data = SensorData(
-                                    temperature=temperature,
-                                    humidity=humidity,
-                                    battery=battery,
-                                    voltage=voltage,
-                                    last_seen=datetime.now(tz=timezone.utc).astimezone(),
-                                    rssi=cached_rssi
-                                )
-                                
-                                logger.debug(f"Parsed binary: T={temperature}°C, H={humidity}%, B={battery}%, V={voltage:.3f}V")
-                            else:
-                                logger.warning(f"Unexpected notification length: {len(data)} bytes")
-                                
-                        except Exception as e:
-                            logger.error(f"Error parsing notification data: {e}")
-                    
-                    # Start notifications and wait for data
-                    await client.start_notify(notify_char, notification_handler)
-                    logger.debug(f"Started notifications, waiting up to {scan_timeout}s for data...")
-                    
-                    # Wait for notification
-                    start_time = asyncio.get_event_loop().time()
-                    while received_data is None:
-                        await asyncio.sleep(0.1)
-                        
-                        # Check timeout
-                        if (asyncio.get_event_loop().time() - start_time) > scan_timeout:
-                            logger.warning(f"Timeout waiting for notification from {mac_address}")
-                            break
-                    
-                    # Stop notifications  
-                    await client.stop_notify(notify_char)
-                    
-                    if received_data:
-                        logger.info(f"Successfully read sensor data from {mac_address}")
-                        logger.info(f"Final result: T={received_data.temperature}°C, H={received_data.humidity}%, "
-                                  f"B={received_data.battery}%, V={received_data.voltage:.3f}V")
-                        return received_data
-                    
-            except Exception as e:
-                logger.error(f"Connection attempt {attempt + 1} failed for {mac_address}: {e}")
-                if attempt == self.retry_attempts - 1:
-                    logger.error(f"All {self.retry_attempts} connection attempts failed for {mac_address}")
+        # Detect device type to choose appropriate communication method
+        device_type = await self._detect_device_type(mac_address)
+        logger.debug(f"Detected device type: {device_type} for {mac_address}")
         
-        return None
+        # Use advertisement-based approach for all devices (MiBeacon only)
+        logger.info(f"Using advertisement-based communication for device {mac_address}")
+        return await self.read_sensor_data_advertisement(mac_address, scan_timeout)
+    
+
 
     async def discover_devices(self) -> list:
         """Discover available Xiaomi temperature sensors"""
@@ -297,18 +294,26 @@ class BluetoothManager:
                             rssi_value = getattr(device, attr)
                             break
                 
-                # Cache RSSI value if available
-                if rssi_value is not None:
-                    self._rssi_cache[device.address] = rssi_value
-                    logger.debug(f"Cached RSSI {rssi_value} for device {device.address} during scan")
+                # Check if this is a new device or RSSI update
+                is_new_device = device.address not in discovered_devices
                 
+                # Update device info (overwrites previous entry with updated RSSI)
                 discovered_devices[device.address] = {
                     "mac": device.address,
                     "name": device.name,
                     "mode": "LYWSDCGQ",  # Default mode for these devices
                     "rssi": rssi_value
                 }
-                logger.info(f"Found Xiaomi device during scan: {discovered_devices[device.address]}")
+                
+                # Cache RSSI value if available
+                if rssi_value is not None:
+                    self._rssi_cache[device.address] = rssi_value
+                
+                # Log appropriately based on whether it's new or an update
+                if is_new_device:
+                    logger.info(f"Found Xiaomi device: {device.address} ({device.name}, RSSI: {rssi_value} dBm)")
+                else:
+                    logger.debug(f"Updated RSSI for {device.address}: {rssi_value} dBm")
         
         try:
             logger.debug("Scanning for BLE devices with callback...")

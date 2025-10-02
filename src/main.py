@@ -18,6 +18,8 @@ from typing import Optional
 
 # Import implemented components
 from .bluetooth_manager import BluetoothManager
+from .continuous_bluetooth_manager import ContinuousBluetoothManager
+from .sensor_cache import SensorCache
 from .mqtt_publisher import MQTTPublisher, MQTTConfig
 # from .device_manager import DeviceManager  # TODO: Step 5
 from .config_manager import ConfigManager
@@ -35,6 +37,8 @@ class MijiaTemperatureDaemon:
         # Component placeholders - will be initialized in setup phase
         self.config_manager = ConfigManager(self.config_file)
         self.bluetooth_manager = None
+        self.continuous_bluetooth_manager = None
+        self.sensor_cache = None
         self.device_manager = None
         self.mqtt_publisher = None
         
@@ -45,11 +49,33 @@ class MijiaTemperatureDaemon:
             # Load and validate config
             config = self.config_manager.get_config()
 
-            # Initialize Bluetooth manager
+            # Initialize Bluetooth manager for discovery
             bluetooth_config = config.bluetooth.model_dump()
-            bluetooth_config['static_devices'] = config.devices.static_devices
+            # Convert StaticDeviceModel instances to dicts for backward compatibility
+            static_devices_dicts = [
+                device.model_dump() if hasattr(device, 'model_dump') else device
+                for device in config.devices.static_devices
+            ]
+            bluetooth_config['static_devices'] = static_devices_dicts
             self.bluetooth_manager = BluetoothManager(bluetooth_config)
             logger.info("Bluetooth manager initialized")
+
+            # Initialize sensor cache for data accumulation
+            cache_config = bluetooth_config.copy()
+            cache_config.update({
+                'temperature_threshold': config.thresholds.temperature,
+                'humidity_threshold': config.thresholds.humidity,
+                'publish_interval': config.mqtt.publish_interval
+            })
+            self.sensor_cache = SensorCache(cache_config)
+            logger.info("Sensor cache initialized")
+
+            # Initialize continuous Bluetooth manager for real-time scanning
+            self.continuous_bluetooth_manager = ContinuousBluetoothManager(
+                bluetooth_config, 
+                data_callback=self._handle_sensor_data
+            )
+            logger.info("Continuous Bluetooth manager initialized")
 
             # Initialize MQTT publisher
             mqtt_config = MQTTConfig(
@@ -86,6 +112,10 @@ class MijiaTemperatureDaemon:
         
         try:
             # Cleanup components in reverse order
+            if self.continuous_bluetooth_manager:
+                logger.debug("Stopping continuous Bluetooth manager...")
+                await self.continuous_bluetooth_manager.cleanup()
+                
             if self.mqtt_publisher:
                 logger.debug("Stopping MQTT publisher...")
                 await self.mqtt_publisher.stop()
@@ -100,76 +130,106 @@ class MijiaTemperatureDaemon:
             logger.info("Daemon stopped with errors")
         
     async def _main_loop(self) -> None:
-        """Main daemon execution loop with periodic rediscovery."""
-        # Initial device discovery
+        """Main daemon execution loop with continuous MiBeacon scanning."""
+        # Initial device discovery to populate the cache
         logger.info("Performing initial device discovery...")
         discovered_devices = await self.bluetooth_manager.discover_devices()
-        if not discovered_devices:
+        if discovered_devices:
+            logger.info(f"Found {len(discovered_devices)} Xiaomi devices during initial scan")
+            # Register discovered devices in the sensor cache
+            for device_info in discovered_devices:
+                self.sensor_cache.discover_device(device_info['mac'])
+        else:
             logger.warning("No Xiaomi devices found during initial scan")
 
-        poll_interval = 300
-        rediscovery_interval = 3600  # Default 1 hour in seconds
-        if self.config_manager and self.config_manager._config:
-            poll_interval = self.config_manager._config.devices.poll_interval
-            rediscovery_interval = self.config_manager._config.bluetooth.rediscovery_interval
-
-        last_rediscovery = asyncio.get_event_loop().time()
-
-        while self.running:
-            try:
-                # Periodic rediscovery
-                now = asyncio.get_event_loop().time()
-                if (now - last_rediscovery) >= rediscovery_interval:
-                    logger.info("Performing periodic BLE rediscovery...")
-                    discovered_devices = await self.bluetooth_manager.discover_devices()
-                    last_rediscovery = now
-                    if not discovered_devices:
-                        logger.warning("No Xiaomi devices found during rediscovery")
-
-                # Read data from discovered devices
-                for device in discovered_devices:
-                    if not self.running:
-                        break
-                    mac = device["mac"]
-                    mode = device["mode"]
-                    logger.info(f"Reading data from {device['name']} ({mac})")
-                    try:
-                        sensor_data = await self.bluetooth_manager.read_device_data(mac, mode)
-                        if sensor_data:
-                            logger.info(f"Device {mac}: {sensor_data.to_dict()}")
-
-                            # Publish to MQTT (Step 3 - completed)
-                            device_id = mac.replace(":", "").replace("-", "")  # Clean MAC for device ID
-                            success = await self.mqtt_publisher.publish_sensor_data(device_id, sensor_data)
-                            if success:
-                                logger.debug(f"Published data for {mac} to MQTT")
-                            else:
-                                logger.warning(f"Failed to publish data for {mac} to MQTT")
-                        else:
-                            logger.warning(f"Failed to read data from {mac}")
-                    except Exception as e:
-                        logger.error(f"Error reading from device {mac}: {e}")
-
-                if not self.running:
-                    break
-
-                # Sleep for polling interval with periodic checks
-                logger.debug(f"Sleeping for {poll_interval} seconds...")
-                for _ in range(poll_interval):
-                    if not self.running:
-                        break
-                    await asyncio.sleep(1)  # Sleep 1 second at a time for responsiveness
-
-            except asyncio.CancelledError:
-                logger.info("Main loop cancelled")
-                break
-            except Exception as e:
-                logger.error(f"Error in main loop: {e}")
-                if self.running:  # Only sleep if we're still supposed to be running
-                    for _ in range(30):  # Brief pause before retry
-                        if not self.running:
-                            break
-                        await asyncio.sleep(1)
+        # Start continuous MiBeacon advertisement scanning
+        logger.info("Starting continuous MiBeacon advertisement scanning...")
+        scanning_started = await self.continuous_bluetooth_manager.start_continuous_scanning()
+        
+        if not scanning_started:
+            logger.error("Failed to start continuous scanning - daemon cannot proceed")
+            return
+            
+        logger.info("Continuous MiBeacon scanning active - daemon ready")
+        
+        # Run continuous scanning until shutdown
+        try:
+            while self.running:
+                # The real work happens in advertisement callbacks
+                # We just need to keep the daemon alive and handle periodic cleanup
+                # Sleep in smaller chunks for faster shutdown response
+                await asyncio.sleep(10)  # Check every 10 seconds for shutdown signal
+                
+                # Optional: Log cache status periodically (every 6 iterations = 60s)
+                if self.sensor_cache and (asyncio.get_event_loop().time() % 60 < 10):
+                    device_count = self.sensor_cache.get_device_count()
+                    logger.debug(f"Sensor cache tracking {device_count} devices")
+                    
+        except asyncio.CancelledError:
+            logger.info("Main loop cancelled - shutting down")
+            raise  # Re-raise to propagate cancellation
+        except Exception as e:
+            logger.error(f"Error in main loop: {e}")
+        finally:
+            logger.info("Stopping continuous scanning...")
+            if self.continuous_bluetooth_manager:
+                await self.continuous_bluetooth_manager.stop_continuous_scanning()
+    
+    async def _handle_sensor_data(self, mac_address: str, parsed_data: dict, rssi: Optional[int]):
+        """
+        Handle new sensor data from continuous MiBeacon scanning.
+        
+        This callback is invoked by ContinuousBluetoothManager when MiBeacon
+        advertisements are received. It updates the sensor cache and triggers
+        MQTT publishing when appropriate.
+        """
+        try:
+            logger.debug(f"Processing sensor data from {mac_address}: {parsed_data}")
+            
+            # Update sensor cache with partial data
+            should_publish_immediate, should_publish_periodic = self.sensor_cache.update_partial_sensor_data(
+                mac_address, parsed_data, rssi
+            )
+            
+            # Get device record for publishing
+            device = self.sensor_cache.devices.get(mac_address.upper())
+            
+            if should_publish_immediate or should_publish_periodic:
+                if device and device.current_data:
+                    # Determine message type
+                    message_type = "threshold-based" if should_publish_immediate else "periodic"
+                    
+                    # Publish complete sensor data to MQTT with friendly name if available
+                    logger.info(f"Publishing sensor data for {mac_address} "
+                              f"({'immediate' if should_publish_immediate else 'periodic'})" +
+                              (f" ({device.friendly_name})" if device.friendly_name else ""))
+                    
+                    if self.mqtt_publisher:
+                        # Convert MAC address to device_id format (remove colons)
+                        device_id = mac_address.replace(':', '').upper()
+                        
+                        # Publish with friendly name if configured
+                        await self.mqtt_publisher.publish_sensor_data_with_name(
+                            device_id, 
+                            device.current_data, 
+                            friendly_name=device.friendly_name,
+                            reason=message_type
+                        )
+                        
+                        # Mark as published in cache
+                        self.sensor_cache.mark_device_published(mac_address)
+                        
+                        logger.debug(f"Successfully published data for {mac_address}")
+                    else:
+                        logger.warning("MQTT publisher not available")
+                else:
+                    logger.warning(f"No complete sensor data available for {mac_address}")
+            else:
+                # Partial data cached, waiting for more MiBeacon packets
+                logger.debug(f"Cached partial data for {mac_address}, waiting for complete reading")
+                
+        except Exception as e:
+            logger.error(f"Error handling sensor data for {mac_address}: {e}")
 
 
 def setup_logging(log_level: str = "INFO") -> None:
@@ -189,16 +249,6 @@ def setup_logging(log_level: str = "INFO") -> None:
             "bleak.backends.bluezdbus.client",
         ]:
             logging.getLogger(noisy).setLevel(logging.WARNING)
-
-
-def setup_signal_handlers(daemon: MijiaTemperatureDaemon) -> None:
-    """Setup signal handlers for graceful shutdown."""
-    def signal_handler(signum, frame):
-        logger.info(f"Received signal {signum}, initiating shutdown...")
-        daemon.running = False
-    
-    signal.signal(signal.SIGTERM, signal_handler)
-    signal.signal(signal.SIGINT, signal_handler)
 
 
 async def main() -> None:
@@ -226,13 +276,24 @@ async def main() -> None:
     # Create daemon
     daemon = MijiaTemperatureDaemon(args.config)
     
-    # Setup signal handlers
-    setup_signal_handlers(daemon)
+    # Setup asyncio-compatible signal handlers for graceful shutdown
+    loop = asyncio.get_event_loop()
+    
+    def signal_handler():
+        logger.info("Received shutdown signal (Ctrl-C), initiating graceful shutdown...")
+        daemon.running = False
+        # Cancel all running tasks to break out of sleep/wait operations
+        for task in asyncio.all_tasks(loop):
+            task.cancel()
+    
+    # Register signal handlers using asyncio
+    loop.add_signal_handler(signal.SIGINT, signal_handler)
+    loop.add_signal_handler(signal.SIGTERM, signal_handler)
     
     try:
         await daemon.start()
-    except KeyboardInterrupt:
-        logger.info("Received keyboard interrupt")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        logger.info("Shutdown initiated")
         daemon.running = False
     except Exception as e:
         logger.error(f"Daemon error: {e}")

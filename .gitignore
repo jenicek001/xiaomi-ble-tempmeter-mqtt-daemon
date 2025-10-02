@@ -103,12 +103,15 @@ celerybeat.pid
 
 # Environments
 .env
+.env.backup
 .venv
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Note: .env.example is intentionally NOT ignored - it's a template for users
 
 # Spyder project settings
 .spyderproject
@@ -130,3 +133,11 @@ dmypy.json
 
 # Ignore local config file
 config/config.yaml
+
+# Project-specific ignores
+logs/
+*.log
+
+# Keep experiments and tests structure clean
+experiments/**/__pycache__/
+tests/**/__pycache__/
