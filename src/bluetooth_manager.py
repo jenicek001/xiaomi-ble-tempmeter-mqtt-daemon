@@ -22,7 +22,7 @@ import asyncio
 import logging
 import struct
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, Dict
 from dataclasses import dataclass
 
 from bleak import BleakClient, BleakScanner
@@ -43,6 +43,7 @@ class SensorData:
     battery: int
     last_seen: datetime  # Should be timezone-aware
     rssi: Optional[int] = None
+    statistics: Optional[Dict[str, dict]] = None  # Statistics for each value type
     
     def to_dict(self, friendly_name: Optional[str] = None, message_type: str = "periodic"):
         """Convert to dictionary for JSON serialization
@@ -62,6 +63,41 @@ class SensorData:
         }
         if friendly_name:
             result["friendly_name"] = friendly_name
+        
+        # Add statistics if available
+        if self.statistics:
+            # Add temperature statistics
+            if 'temperature' in self.statistics:
+                stats = self.statistics['temperature']
+                result["temperature_count"] = stats.get('count', 0)
+                result["temperature_min"] = stats.get('min')
+                result["temperature_max"] = stats.get('max')
+                result["temperature_avg"] = stats.get('avg')
+            
+            # Add humidity statistics
+            if 'humidity' in self.statistics:
+                stats = self.statistics['humidity']
+                result["humidity_count"] = stats.get('count', 0)
+                result["humidity_min"] = stats.get('min')
+                result["humidity_max"] = stats.get('max')
+                result["humidity_avg"] = stats.get('avg')
+            
+            # Add battery statistics
+            if 'battery' in self.statistics:
+                stats = self.statistics['battery']
+                result["battery_count"] = stats.get('count', 0)
+                result["battery_min"] = stats.get('min')
+                result["battery_max"] = stats.get('max')
+                result["battery_avg"] = stats.get('avg')
+            
+            # Add RSSI statistics
+            if 'rssi' in self.statistics:
+                stats = self.statistics['rssi']
+                result["rssi_count"] = stats.get('count', 0)
+                result["rssi_min"] = stats.get('min')
+                result["rssi_max"] = stats.get('max')
+                result["rssi_avg"] = stats.get('avg')
+        
         return result
 
 
