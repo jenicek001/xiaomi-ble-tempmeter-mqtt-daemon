@@ -207,6 +207,69 @@ class MQTTPublisher:
                 "device_class": HA_DEVICE_CLASSES["battery"],
                 "value_template": "{{ value_json.battery }}",
                 "icon": "mdi:battery"
+            },
+            # Statistics sensors
+            {
+                "type": "temperature_min",
+                "name": "Temperature Min",
+                "unit": "°C",
+                "device_class": HA_DEVICE_CLASSES["temperature"],
+                "value_template": "{{ value_json.temperature_min }}",
+                "icon": "mdi:thermometer-chevron-down"
+            },
+            {
+                "type": "temperature_max",
+                "name": "Temperature Max",
+                "unit": "°C",
+                "device_class": HA_DEVICE_CLASSES["temperature"],
+                "value_template": "{{ value_json.temperature_max }}",
+                "icon": "mdi:thermometer-chevron-up"
+            },
+            {
+                "type": "temperature_avg",
+                "name": "Temperature Avg",
+                "unit": "°C",
+                "device_class": HA_DEVICE_CLASSES["temperature"],
+                "value_template": "{{ value_json.temperature_avg }}",
+                "icon": "mdi:thermometer"
+            },
+            {
+                "type": "humidity_min",
+                "name": "Humidity Min",
+                "unit": "%",
+                "device_class": HA_DEVICE_CLASSES["humidity"],
+                "value_template": "{{ value_json.humidity_min }}",
+                "icon": "mdi:water-minus"
+            },
+            {
+                "type": "humidity_max",
+                "name": "Humidity Max",
+                "unit": "%",
+                "device_class": HA_DEVICE_CLASSES["humidity"],
+                "value_template": "{{ value_json.humidity_max }}",
+                "icon": "mdi:water-plus"
+            },
+            {
+                "type": "humidity_avg",
+                "name": "Humidity Avg",
+                "unit": "%",
+                "device_class": HA_DEVICE_CLASSES["humidity"],
+                "value_template": "{{ value_json.humidity_avg }}",
+                "icon": "mdi:water-percent"
+            },
+            {
+                "type": "temperature_count",
+                "name": "Temperature Readings",
+                "unit": "readings",
+                "value_template": "{{ value_json.temperature_count }}",
+                "icon": "mdi:counter"
+            },
+            {
+                "type": "humidity_count",
+                "name": "Humidity Readings",
+                "unit": "readings",
+                "value_template": "{{ value_json.humidity_count }}",
+                "icon": "mdi:counter"
             }
         ]
         
@@ -224,7 +287,6 @@ class MQTTPublisher:
                 "state_topic": state_topic,
                 "value_template": sensor["value_template"],
                 "unit_of_measurement": sensor["unit"],
-                "device_class": sensor["device_class"],
                 "icon": sensor["icon"],
                 "device": device_info,
                 "availability": {
@@ -233,6 +295,10 @@ class MQTTPublisher:
                 },
                 "expire_after": 900  # 15 minutes
             }
+            
+            # Add device_class only if it exists
+            if "device_class" in sensor:
+                config["device_class"] = sensor["device_class"]
             
             result = self._client.publish(
                 topic=config_topic,
@@ -260,8 +326,15 @@ class MQTTPublisher:
             
         logger.info(f"Removing Home Assistant discovery for device {device_id}")
         
-        # Remove discovery configs for each sensor type
-        for sensor_type in ["temperature", "humidity", "battery"]:
+        # Remove discovery configs for each sensor type (including statistics)
+        sensor_types = [
+            "temperature", "humidity", "battery",
+            "temperature_min", "temperature_max", "temperature_avg",
+            "humidity_min", "humidity_max", "humidity_avg",
+            "temperature_count", "humidity_count"
+        ]
+        
+        for sensor_type in sensor_types:
             config_topic = MQTT_TOPICS["discovery"].format(
                 discovery_prefix=self.config.discovery_prefix,
                 device_id=device_id,

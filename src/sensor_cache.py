@@ -20,6 +20,46 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class ValueStatistics:
+    """Statistics tracking for a single sensor value type."""
+    count: int = 0
+    min_value: Optional[float] = None
+    max_value: Optional[float] = None
+    sum_value: float = 0.0
+    
+    @property
+    def avg_value(self) -> Optional[float]:
+        """Calculate average value."""
+        return self.sum_value / self.count if self.count > 0 else None
+    
+    def add_value(self, value: float) -> None:
+        """Add a new value to statistics."""
+        self.count += 1
+        self.sum_value += value
+        
+        if self.min_value is None or value < self.min_value:
+            self.min_value = value
+        if self.max_value is None or value > self.max_value:
+            self.max_value = value
+    
+    def reset(self) -> None:
+        """Reset statistics for next collection period."""
+        self.count = 0
+        self.min_value = None
+        self.max_value = None
+        self.sum_value = 0.0
+    
+    def to_dict(self) -> dict:
+        """Convert statistics to dictionary."""
+        return {
+            'count': self.count,
+            'min': self.min_value,
+            'max': self.max_value,
+            'avg': self.avg_value
+        }
+
+
+@dataclass
 class DeviceRecord:
     """Cache record for a single Xiaomi temperature/humidity sensor."""
     mac_address: str
@@ -32,6 +72,12 @@ class DeviceRecord:
     cached_battery: Optional[int] = None
     cached_rssi: Optional[int] = None
     last_update_time: Optional[datetime] = None
+    
+    # Statistics tracking between MQTT publishes
+    temperature_stats: ValueStatistics = field(default_factory=ValueStatistics)
+    humidity_stats: ValueStatistics = field(default_factory=ValueStatistics)
+    battery_stats: ValueStatistics = field(default_factory=ValueStatistics)
+    rssi_stats: ValueStatistics = field(default_factory=ValueStatistics)
     
     # Complete sensor data (only when all required fields are available)
     current_data: Optional[SensorData] = None
@@ -56,7 +102,7 @@ class DeviceRecord:
         
     def update_partial_data(self, parsed_data: dict, rssi: Optional[int] = None) -> bool:
         """
-        Update partial sensor data from MiBeacon packet.
+        Update partial sensor data from MiBeacon packet and track statistics.
         
         Args:
             parsed_data: Dictionary with parsed MiBeacon fields
@@ -70,18 +116,22 @@ class DeviceRecord:
         
         if 'temperature' in parsed_data:
             self.cached_temperature = parsed_data['temperature']
+            self.temperature_stats.add_value(parsed_data['temperature'])
             updated = True
             
         if 'humidity' in parsed_data:
             self.cached_humidity = parsed_data['humidity']
+            self.humidity_stats.add_value(parsed_data['humidity'])
             updated = True
             
         if 'battery' in parsed_data:
             self.cached_battery = parsed_data['battery']
+            self.battery_stats.add_value(parsed_data['battery'])
             updated = True
             
         if rssi is not None:
             self.cached_rssi = rssi
+            self.rssi_stats.add_value(rssi)
             updated = True
             
         if updated:
@@ -89,9 +139,12 @@ class DeviceRecord:
             
         return updated
         
-    def create_complete_sensor_data(self) -> Optional[SensorData]:
+    def create_complete_sensor_data(self, include_statistics: bool = False) -> Optional[SensorData]:
         """
         Create complete SensorData object if all required fields are cached.
+        
+        Args:
+            include_statistics: If True, include statistics in the sensor data
         
         Returns:
             SensorData object or None if data is incomplete
@@ -99,13 +152,17 @@ class DeviceRecord:
         # Only return data if we have real sensor data with real timestamp
         if not self.is_data_complete() or self.last_update_time is None:
             return None
+        
+        # Get statistics if requested
+        statistics = self.get_statistics() if include_statistics else None
             
         return SensorData(
             temperature=self.cached_temperature,
             humidity=self.cached_humidity,
             battery=self.cached_battery or 0,
             last_seen=self.last_update_time,  # Must be real timestamp from sensor
-            rssi=self.cached_rssi
+            rssi=self.cached_rssi,
+            statistics=statistics
         )
         
     def should_publish_immediately(self, temperature_threshold: float = 0.2, humidity_threshold: float = 1.0) -> bool:
@@ -179,7 +236,12 @@ class DeviceRecord:
         )
         
     def mark_published(self) -> None:
-        """Mark current cached data as published."""
+        """
+        Mark current cached data as published and invalidate cache.
+        
+        After publishing, reset statistics and clear cached values to ensure
+        only fresh data is published in the next cycle.
+        """
         if self.is_data_complete() and self.last_update_time is not None:
             # Only mark as published if we have real sensor data with real timestamp
             self.current_data = self.create_complete_sensor_data()
@@ -193,8 +255,30 @@ class DeviceRecord:
             self.last_publish_time = datetime.now(tz=timezone.utc)
             self.has_published_once = True
             logger.debug(f"Marked {self.mac_address} as published at {self.last_publish_time}")
+            
+            # Invalidate cache: reset statistics for next collection period
+            # Keep the most recent values for threshold detection
+            self.temperature_stats.reset()
+            self.humidity_stats.reset()
+            self.battery_stats.reset()
+            self.rssi_stats.reset()
+            logger.debug(f"Invalidated cache and reset statistics for {self.mac_address}")
         else:
             logger.warning(f"Cannot mark {self.mac_address} as published - incomplete data or no real timestamp")
+    
+    def get_statistics(self) -> Dict[str, dict]:
+        """
+        Get statistics for all sensor values.
+        
+        Returns:
+            Dictionary with statistics for temperature, humidity, battery, and RSSI
+        """
+        return {
+            'temperature': self.temperature_stats.to_dict(),
+            'humidity': self.humidity_stats.to_dict(),
+            'battery': self.battery_stats.to_dict(),
+            'rssi': self.rssi_stats.to_dict()
+        }
 
 
 class SensorCache:
@@ -289,8 +373,8 @@ class SensorCache:
         
         # Check if we now have complete data for publishing
         if device.is_data_complete():
-            # Update current_data with complete sensor reading
-            device.current_data = device.create_complete_sensor_data()
+            # Update current_data with complete sensor reading including statistics
+            device.current_data = device.create_complete_sensor_data(include_statistics=True)
             
             # Check publishing triggers
             immediate = device.should_publish_immediately(self.temperature_threshold, self.humidity_threshold)
@@ -332,8 +416,8 @@ class SensorCache:
         
         for device in self.devices.values():
             if device.is_data_complete() and device.should_publish_periodic(self.publish_interval):
-                # Ensure current_data is up to date
-                device.current_data = device.create_complete_sensor_data()
+                # Ensure current_data is up to date with statistics
+                device.current_data = device.create_complete_sensor_data(include_statistics=True)
                 
                 # Check if sensor data is stale (last_seen older than last publish)
                 if device.last_publish_time and device.last_update_time:

@@ -208,7 +208,7 @@ MIJIA_LOG_LEVEL=INFO
 The daemon publishes sensor data as JSON to a single topic per device:
 
 ```
-mijiableht/{device_id}/state      # JSON with all sensor data
+mijiableht/{device_id}/state      # JSON with all sensor data and statistics
 ```
 
 **Example JSON message:**
@@ -217,9 +217,47 @@ mijiableht/{device_id}/state      # JSON with all sensor data
   "temperature": 23.5,
   "humidity": 45.2,
   "battery": 78,
-  "last_seen": "2025-09-26T10:30:45Z"
+  "last_seen": "2025-09-26T10:30:45+02:00",
+  "rssi": -65,
+  "signal": "good",
+  "message_type": "periodic",
+  "friendly_name": "Living Room",
+  "temperature_count": 25,
+  "temperature_min": 23.2,
+  "temperature_max": 23.7,
+  "temperature_avg": 23.45,
+  "humidity_count": 25,
+  "humidity_min": 44.8,
+  "humidity_max": 45.6,
+  "humidity_avg": 45.15,
+  "battery_count": 5,
+  "battery_min": 78,
+  "battery_max": 78,
+  "battery_avg": 78.0,
+  "rssi_count": 25,
+  "rssi_min": -68,
+  "rssi_max": -62,
+  "rssi_avg": -65.2
 }
 ```
+
+**Statistics Feature**: The daemon tracks minimum, maximum, average, and count for each sensor value between MQTT publishes (default: every 5 minutes). This provides:
+- Better insight into sensor fluctuations
+- Detection of measurement spikes or drops
+- Data quality indicators (count shows how many readings were collected)
+- Cache invalidation after each publish ensures only fresh data is reported
+
+**Message Types**:
+- `periodic`: Sent at regular intervals (default: 5 minutes)
+- `threshold-based`: Triggered immediately when temperature or humidity changes significantly
+
+**RSSI Signal Interpretation**:
+- `excellent`: >= -50 dBm (optimal)
+- `good`: -50 to -60 dBm (reliable)
+- `fair`: -60 to -70 dBm (acceptable)
+- `weak`: -70 to -80 dBm (may have issues)
+- `very weak`: < -80 dBm (poor connection)
+- `unknown`: RSSI not available
 
 ### Home Assistant Discovery
 
@@ -229,7 +267,20 @@ Automatic discovery messages are published to:
 homeassistant/sensor/mijiableht_{device_id}_temperature/config
 homeassistant/sensor/mijiableht_{device_id}_humidity/config  
 homeassistant/sensor/mijiableht_{device_id}_battery/config
+homeassistant/sensor/mijiableht_{device_id}_temperature_min/config
+homeassistant/sensor/mijiableht_{device_id}_temperature_max/config
+homeassistant/sensor/mijiableht_{device_id}_temperature_avg/config
+homeassistant/sensor/mijiableht_{device_id}_humidity_min/config
+homeassistant/sensor/mijiableht_{device_id}_humidity_max/config
+homeassistant/sensor/mijiableht_{device_id}_humidity_avg/config
+homeassistant/sensor/mijiableht_{device_id}_temperature_count/config
+homeassistant/sensor/mijiableht_{device_id}_humidity_count/config
 ```
+
+This creates 11 sensor entities per device in Home Assistant:
+- **Primary sensors**: Temperature, Humidity, Battery
+- **Statistics sensors**: Min/Max/Avg values for temperature and humidity
+- **Count sensors**: Number of readings collected between publishes
 
 ## Troubleshooting
 
